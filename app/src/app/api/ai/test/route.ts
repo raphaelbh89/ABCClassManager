@@ -1,5 +1,14 @@
 import { NextResponse } from 'next/server'
 
+const GEMINI_MODELS_TO_TRY = [
+  { version: 'v1beta', model: 'gemini-1.5-flash' },
+  { version: 'v1beta', model: 'gemini-2.0-flash' },
+  { version: 'v1beta', model: 'gemini-2.0-flash-exp' },
+  { version: 'v1',     model: 'gemini-1.5-flash' },
+  { version: 'v1beta', model: 'gemini-1.5-pro' },
+  { version: 'v1beta', model: 'gemini-pro' },
+]
+
 export async function POST(req: Request) {
   try {
     const { provider = 'gemini', apiKey = '', customBaseUrl = '', customModel = '' } = await req.json()
@@ -8,33 +17,86 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'API Key không được để trống hoặc quá ngắn.' }, { status: 400 })
     }
 
-    const testPrompt = 'Hãy chào bằng tiếng Anh ngắn gọn 3 từ.'
+    const testPrompt = 'Hi! Please reply with 3 words.'
 
-    // 1. Google Gemini
+    // 1. Google Gemini (Tự động thử các model và version khác nhau)
     if (provider === 'gemini') {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`
+      const cleanKey = apiKey.trim()
       const start = Date.now()
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: testPrompt }] }],
-        }),
-      })
+      let lastError = ''
+      let successfulModel = ''
+      let replyText = ''
 
-      if (!res.ok) {
-        const errText = await res.text()
-        return NextResponse.json({ success: false, error: `Gemini API lỗi (${res.status}): ${errText}` }, { status: 400 })
+      // Thử danh sách các model phổ biến
+      for (const item of GEMINI_MODELS_TO_TRY) {
+        try {
+          const url = `https://generativelanguage.googleapis.com/${item.version}/models/${item.model}:generateContent?key=${cleanKey}`
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: testPrompt }] }],
+            }),
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'OK'
+            successfulModel = `${item.model} (${item.version})`
+            break
+          } else {
+            const errText = await res.text()
+            lastError = `[${item.model}] HTTP ${res.status}: ${errText}`
+          }
+        } catch (e: any) {
+          lastError = e.message
+        }
       }
 
-      const data = await res.json()
-      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'OK'
-      return NextResponse.json({
-        success: true,
-        message: 'Kết nối Google Gemini thành công! (Mô hình gemini-1.5-flash)',
-        latency: `${Date.now() - start}ms`,
-        reply: reply.trim(),
-      })
+      // Nếu vẫn chưa được, thử query danh sách model được cấp phép của key
+      if (!successfulModel) {
+        try {
+          const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`)
+          if (listRes.ok) {
+            const listData = await listRes.json()
+            const models = listData?.models || []
+            const validModel = models.find((m: any) =>
+              m.supportedGenerationMethods?.includes('generateContent') &&
+              (m.name.includes('flash') || m.name.includes('pro') || m.name.includes('gemini'))
+            )
+            if (validModel) {
+              const modelName = validModel.name.replace('models/', '')
+              const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanKey}`
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  contents: [{ parts: [{ text: testPrompt }] }],
+                }),
+              })
+              if (res.ok) {
+                const data = await res.json()
+                replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'OK'
+                successfulModel = modelName
+              }
+            }
+          }
+        } catch {}
+      }
+
+      if (successfulModel) {
+        return NextResponse.json({
+          success: true,
+          message: `Kết nối Google Gemini thành công! (Mô hình: ${successfulModel})`,
+          latency: `${Date.now() - start}ms`,
+          reply: replyText.trim(),
+        })
+      } else {
+        return NextResponse.json({
+          success: false,
+          error: `Gemini API lỗi: ${lastError}`,
+        }, { status: 400 })
+      }
     }
 
     // 2. OpenAI ChatGPT

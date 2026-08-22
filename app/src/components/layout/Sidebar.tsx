@@ -14,10 +14,10 @@ const navItems = [
   { href: '/classes',    icon: GraduationCap,   label: 'Lớp học' },
   { href: '/attendance', icon: ClipboardCheck,  label: 'Điểm danh' },
   { href: '/students',   icon: Users,           label: 'Học sinh' },
-  { href: '/race',       icon: Trophy,          label: '🎯 Gọi Trả Bài' },
+  { href: '/race',       icon: Trophy,          label: 'Gọi trả bài' },
   { href: '/game',       icon: Gamepad2,        label: 'Game / Quiz' },
-  { href: '/display',    icon: Tv,              label: '📺 Màn chiếu TV' },
-  { href: '/scanner',    icon: Smartphone,      label: '📱 Quét Mobile' },
+  { href: '/display',    icon: Tv,              label: 'Màn chiếu TV' },
+  { href: '/scanner',    icon: Smartphone,      label: 'Quét Mobile' },
   { href: '/settings',   icon: Settings,        label: 'Cài đặt' },
 ]
 

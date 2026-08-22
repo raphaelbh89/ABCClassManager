@@ -75,37 +75,55 @@ Hãy tạo câu hỏi thú vị, chuẩn kiến thức môn ${subject}, nội du
 
   // ─── 1. GOOGLE GEMINI API (MIỄN PHÍ 100%) ───
   if (provider === 'gemini' && cleanKey.length > 5) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${cleanKey}`
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${prompt}` }] }],
-          generationConfig: {
-            temperature: 0.7,
-            responseMimeType: 'application/json',
-          },
-        }),
-      })
+    const modelsToTry = [
+      { version: 'v1beta', model: 'gemini-1.5-flash' },
+      { version: 'v1beta', model: 'gemini-2.0-flash' },
+      { version: 'v1beta', model: 'gemini-2.0-flash-exp' },
+      { version: 'v1',     model: 'gemini-1.5-flash' },
+      { version: 'v1beta', model: 'gemini-1.5-pro' },
+      { version: 'v1beta', model: 'gemini-pro' },
+    ]
 
-      if (response.ok) {
-        const data = await response.json()
-        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
-        const parsed = JSON.parse(rawText)
-        const normalized = normalizeQuestions(parsed, subject, topic, 'Google Gemini')
-        const deduplicated = deduplicateQuestions(normalized)
-        if (deduplicated.length > 0) {
-          return {
-            questions: shuffleGeneratedList(deduplicated),
-            usedProvider: 'gemini',
-            isAiGenerated: true,
-            providerName: 'Google Gemini 1.5 Flash (AI)',
+    for (const item of modelsToTry) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/${item.version}/models/${item.model}:generateContent?key=${cleanKey}`
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${prompt}` }] }],
+            generationConfig: {
+              temperature: 0.7,
+              responseMimeType: 'application/json',
+            },
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
+          let parsed: any[] = []
+          try {
+            parsed = JSON.parse(rawText)
+          } catch {
+            const jsonMatch = rawText.match(/\[[\s\S]*\]/)
+            if (jsonMatch) parsed = JSON.parse(jsonMatch[0])
+          }
+
+          const normalized = normalizeQuestions(parsed, subject, topic, `Google Gemini (${item.model})`)
+          const deduplicated = deduplicateQuestions(normalized)
+          if (deduplicated.length > 0) {
+            return {
+              questions: shuffleGeneratedList(deduplicated),
+              usedProvider: 'gemini',
+              isAiGenerated: true,
+              providerName: `Google Gemini (${item.model})`,
+            }
           }
         }
+      } catch (err: any) {
+        console.error(`Gemini ${item.model} error:`, err.message)
       }
-    } catch (err: any) {
-      console.error('Gemini generate error:', err.message)
     }
   }
 
