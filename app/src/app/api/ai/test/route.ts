@@ -9,6 +9,16 @@ const GEMINI_MODELS_TO_TRY = [
   { version: 'v1beta', model: 'gemini-pro' },
 ]
 
+const GROQ_MODELS_TO_TRY = [
+  'llama-3.1-8b-instant',
+  'llama-3.3-70b-versatile',
+  'llama-3.1-70b-versatile',
+  'llama3-70b-8192',
+  'llama3-8b-8192',
+  'mixtral-8x7b-32768',
+  'gemma2-9b-it',
+]
+
 export async function POST(req: Request) {
   try {
     const { provider = 'gemini', apiKey = '', customBaseUrl = '', customModel = '' } = await req.json()
@@ -130,35 +140,72 @@ export async function POST(req: Request) {
       })
     }
 
-    // 3. Groq
+    // 3. Groq (Tự động quét models từ tài khoản Groq)
     if (provider === 'groq') {
       const start = Date.now()
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey.trim()}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [{ role: 'user', content: testPrompt }],
-          max_tokens: 20,
-        }),
-      })
+      const cleanKey = apiKey.trim()
+      let modelsToTest = [...GROQ_MODELS_TO_TRY]
 
-      if (!res.ok) {
-        const errText = await res.text()
-        return NextResponse.json({ success: false, error: `Groq API lỗi (${res.status}): ${errText}` }, { status: 400 })
+      // Thử lấy danh sách model thực tế từ Groq
+      try {
+        const modelsRes = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: { Authorization: `Bearer ${cleanKey}` }
+        })
+        if (modelsRes.ok) {
+          const modelsData = await modelsRes.json()
+          const activeIds = (modelsData.data || []).map((m: any) => m.id).filter((id: string) => !id.includes('whisper') && !id.includes('vision') && !id.includes('guard'))
+          if (activeIds.length > 0) {
+            modelsToTest = [...activeIds, ...modelsToTest]
+          }
+        }
+      } catch {}
+
+      let successModel = ''
+      let replyText = ''
+      let lastErr = ''
+
+      for (const m of modelsToTest) {
+        try {
+          const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${cleanKey}`,
+            },
+            body: JSON.stringify({
+              model: m,
+              messages: [{ role: 'user', content: testPrompt }],
+              max_tokens: 20,
+            }),
+          })
+
+          if (res.ok) {
+            const data = await res.json()
+            replyText = data?.choices?.[0]?.message?.content || 'OK'
+            successModel = m
+            break
+          } else {
+            const errText = await res.text()
+            lastErr = `[${m}] HTTP ${res.status}: ${errText}`
+          }
+        } catch (e: any) {
+          lastErr = e.message
+        }
       }
 
-      const data = await res.json()
-      const reply = data?.choices?.[0]?.message?.content || 'OK'
-      return NextResponse.json({
-        success: true,
-        message: 'Kết nối Groq thành công! (Mô hình Llama 3.3 70B)',
-        latency: `${Date.now() - start}ms`,
-        reply: reply.trim(),
-      })
+      if (successModel) {
+        return NextResponse.json({
+          success: true,
+          message: `Kết nối Groq thành công! (Mô hình: ${successModel})`,
+          latency: `${Date.now() - start}ms`,
+          reply: replyText.trim(),
+        })
+      } else {
+        return NextResponse.json({
+          success: false,
+          error: `Groq API lỗi: ${lastErr}`,
+        }, { status: 400 })
+      }
     }
 
     // 4. Custom Endpoint (DeepSeek, OpenRouter, Ollama...)

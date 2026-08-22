@@ -168,44 +168,55 @@ Hãy tạo câu hỏi thú vị, chuẩn kiến thức môn ${subject}, nội du
     }
   }
 
-  // ─── 3. GROQ API (MIỄN PHÍ 100% VỚI LLAMA 3.3) ───
+  // ─── 3. GROQ API (MIỄN PHÍ 100% VỚI LLAMA 3.3 / 3.1) ───
   if (provider === 'groq' && cleanKey.length > 5) {
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${cleanKey}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: prompt },
-          ],
-          temperature: 0.7,
-          response_format: { type: 'json_object' },
-        }),
-      })
+    const groqModels = [
+      'llama-3.1-8b-instant',
+      'llama-3.3-70b-versatile',
+      'llama-3.1-70b-versatile',
+      'llama3-70b-8192',
+      'mixtral-8x7b-32768',
+      'gemma2-9b-it',
+    ]
 
-      if (response.ok) {
-        const data = await response.json()
-        const rawContent = data?.choices?.[0]?.message?.content || '{}'
-        const parsedObj = JSON.parse(rawContent)
-        const list = Array.isArray(parsedObj) ? parsedObj : parsedObj.questions || parsedObj.data || []
-        const normalized = normalizeQuestions(list, subject, topic, 'Groq Llama 3.3')
-        const deduplicated = deduplicateQuestions(normalized)
-        if (deduplicated.length > 0) {
-          return {
-            questions: shuffleGeneratedList(deduplicated),
-            usedProvider: 'groq',
-            isAiGenerated: true,
-            providerName: 'Groq Llama 3.3 (AI)',
+    for (const m of groqModels) {
+      try {
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${cleanKey}`,
+          },
+          body: JSON.stringify({
+            model: m,
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.7,
+            response_format: { type: 'json_object' },
+          }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          const rawContent = data?.choices?.[0]?.message?.content || '{}'
+          const parsedObj = JSON.parse(rawContent)
+          const list = Array.isArray(parsedObj) ? parsedObj : parsedObj.questions || parsedObj.data || []
+          const normalized = normalizeQuestions(list, subject, topic, `Groq (${m})`)
+          const deduplicated = deduplicateQuestions(normalized)
+          if (deduplicated.length > 0) {
+            return {
+              questions: shuffleGeneratedList(deduplicated),
+              usedProvider: 'groq',
+              isAiGenerated: true,
+              providerName: `Groq (${m})`,
+            }
           }
         }
+      } catch (err: any) {
+        console.error(`Groq ${m} error:`, err.message)
       }
-    } catch (err: any) {
-      console.error('Groq generate error:', err.message)
     }
   }
 
