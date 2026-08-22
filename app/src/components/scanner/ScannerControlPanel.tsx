@@ -1,6 +1,6 @@
 'use client'
 // src/components/scanner/ScannerControlPanel.tsx
-// Bảng Điều Khiển Quét Thẻ & Luồng Trò Chơi trên Mobile
+// Bảng Điều Khiển Mobile: Tùy Chỉnh Thời Gian Đếm Ngược & Tự Động Chạy Timer
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/common/Button'
 import { Card } from '@/components/common/Card'
@@ -17,13 +17,13 @@ import {
   Send,
   RefreshCw,
   HelpCircle,
-  Layers,
   ChevronLeft,
   ChevronRight,
-  Flame,
   Swords,
   Users,
   ShieldAlert,
+  Sliders,
+  Zap,
 } from 'lucide-react'
 import type { RealtimeEvent } from '@/services/sync'
 
@@ -42,7 +42,9 @@ interface QuestionItem {
   question_type?: string
 }
 
-// Chế độ game nhãn đẹp
+// Các mốc thời gian đếm ngược phổ biến
+const TIMER_PRESETS = [10, 15, 20, 30, 45, 60]
+
 const GAME_MODE_LABELS: Record<string, { label: string; icon: any; color: string }> = {
   classic: { label: '🏆 Cá Nhân', icon: Trophy, color: 'bg-amber-50 text-amber-800 border-amber-300' },
   arena: { label: '⚔️ Đấu Trường 1v1', icon: Swords, color: 'bg-red-50 text-red-800 border-red-300' },
@@ -50,7 +52,6 @@ const GAME_MODE_LABELS: Record<string, { label: string; icon: any; color: string
   boss: { label: '🐉 Đánh Boss', icon: ShieldAlert, color: 'bg-purple-50 text-purple-800 border-purple-300' },
 }
 
-// Fallback questions mẫu khi chưa có session
 const DEFAULT_QUESTIONS: QuestionItem[] = [
   {
     id: 'sample-1',
@@ -62,28 +63,6 @@ const DEFAULT_QUESTIONS: QuestionItem[] = [
       { label: 'D', text: '40' },
     ],
     correctAnswer: 'B',
-  },
-  {
-    id: 'sample-2',
-    content: 'Thủ đô của Việt Nam là thành phố nào?',
-    options: [
-      { label: 'A', text: 'Hồ Chí Minh' },
-      { label: 'B', text: 'Đà Nẵng' },
-      { label: 'C', text: 'Hà Nội' },
-      { label: 'D', text: 'Hải Phòng' },
-    ],
-    correctAnswer: 'C',
-  },
-  {
-    id: 'sample-3',
-    content: 'Từ nào sau đây viết đúng chính tả?',
-    options: [
-      { label: 'A', text: 'Xinh đẹp' },
-      { label: 'B', text: 'Sinh đẹp' },
-      { label: 'C', text: 'Sanh đẹp' },
-      { label: 'D', text: 'Xênh đẹp' },
-    ],
-    correctAnswer: 'A',
   },
 ]
 
@@ -97,7 +76,38 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [lastScanCounts, setLastScanCounts] = useState<{ red: number; green: number; yellow: number; blue: number } | null>(null)
 
-  // Hàm tải dữ liệu Game Session thật từ database theo roomCode
+  // Cài đặt thời gian đếm ngược & Tự động chạy
+  const [countdownSeconds, setCountdownSeconds] = useState<number>(15)
+  const [autoStartTimer, setAutoStartTimer] = useState<boolean>(true)
+  const [showSettings, setShowSettings] = useState<boolean>(false)
+
+  // Load cấu hình thời gian từ localStorage
+  useEffect(() => {
+    try {
+      const savedDuration = localStorage.getItem('classmanager_timer_duration')
+      if (savedDuration) setCountdownSeconds(Number(savedDuration))
+
+      const savedAuto = localStorage.getItem('classmanager_auto_timer')
+      if (savedAuto !== null) setAutoStartTimer(savedAuto === 'true')
+    } catch {}
+  }, [])
+
+  const handleUpdateDuration = (sec: number) => {
+    setCountdownSeconds(sec)
+    try {
+      localStorage.setItem('classmanager_timer_duration', String(sec))
+    } catch {}
+  }
+
+  const handleToggleAutoTimer = () => {
+    const nextVal = !autoStartTimer
+    setAutoStartTimer(nextVal)
+    try {
+      localStorage.setItem('classmanager_auto_timer', String(nextVal))
+    } catch {}
+  }
+
+  // Tải dữ liệu Game Session thật từ database theo roomCode
   const fetchSessionData = useCallback(async () => {
     if (!roomCode) return
     setIsLoadingSession(true)
@@ -115,7 +125,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
               try { options = JSON.parse(options) } catch {}
             }
 
-            // Nếu options là mảng chuỗi đơn giản
             if (Array.isArray(options) && typeof options[0] === 'string') {
               const labels = ['A', 'B', 'C', 'D', 'E', 'F']
               options = options.map((text: string, i: number) => ({
@@ -123,7 +132,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
                 text: String(text),
               }))
             } else if (!Array.isArray(options) || options.length === 0) {
-              // Mặc định nếu là Đúng/Sai
               if (q.question_type === 'true_false' || q.question_type === 'truefalse') {
                 options = [
                   { label: 'A', text: 'Đúng (True)' },
@@ -163,7 +171,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     }
   }, [roomCode])
 
-  // Tự động load dữ liệu khi vào trang
   useEffect(() => {
     fetchSessionData()
   }, [fetchSessionData])
@@ -171,27 +178,64 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
   const currentQ = questions[currentIdx] || DEFAULT_QUESTIONS[0]
   const gameModeInfo = GAME_MODE_LABELS[gameSession?.game_type] || GAME_MODE_LABELS.classic
 
-  // 1. Đẩy câu hỏi lên màn chiếu TV
-  const handleSendQuestion = async () => {
+  // 1. Đẩy câu hỏi lên màn chiếu TV (và TỰ ĐỘNG CHẠY ĐỒNG HỒ nếu bật Auto-Timer)
+  const sendQuestionToTV = async (targetIndex: number) => {
+    const q = questions[targetIndex]
+    if (!q) return
+
     setIsRevealed(false)
     setIsTimerRunning(false)
     setLastScanCounts(null)
+
+    // Phát câu hỏi
     await onBroadcast({
       type: 'SHOW_QUESTION',
       question: {
-        id: currentQ.id,
-        content: currentQ.content,
-        options: currentQ.options,
-        correctAnswer: currentQ.correctAnswer,
-        question_type: currentQ.question_type,
+        id: q.id,
+        content: q.content,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        question_type: q.question_type,
       },
-      index: currentIdx + 1,
+      index: targetIndex + 1,
       total: questions.length,
     })
+
+    // Tự động kích hoạt đồng hồ đếm ngược
+    if (autoStartTimer) {
+      setIsTimerRunning(true)
+      await onBroadcast({
+        type: 'START_TIMER',
+        seconds: countdownSeconds,
+      })
+    }
   }
 
-  // 2. Bắt đầu đếm ngược 15s
-  const handleStartTimer = async (seconds = 15) => {
+  // Đẩy câu hỏi hiện tại
+  const handleSendCurrentQuestion = async () => {
+    await sendQuestionToTV(currentIdx)
+  }
+
+  // Chuyển sang câu tiếp theo và tự động phát + đếm ngược
+  const handleNextQuestionAndSend = async () => {
+    if (currentIdx < questions.length - 1) {
+      const nextIdx = currentIdx + 1
+      setCurrentIdx(nextIdx)
+      await sendQuestionToTV(nextIdx)
+    }
+  }
+
+  // Chuyển sang câu trước đó
+  const handlePrevQuestion = async () => {
+    if (currentIdx > 0) {
+      const prevIdx = currentIdx - 1
+      setCurrentIdx(prevIdx)
+      await sendQuestionToTV(prevIdx)
+    }
+  }
+
+  // 2. Kích hoạt đếm ngược thủ công
+  const handleStartTimer = async (seconds = countdownSeconds) => {
     setIsTimerRunning(true)
     await onBroadcast({
       type: 'START_TIMER',
@@ -199,7 +243,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 3. Nhận kết quả quét thẻ từ Camera thật
+  // 3. Quét thẻ camera
   const handleScanConfirm = async (counts: { red: number; green: number; yellow: number; blue: number }) => {
     setLastScanCounts(counts)
     await onBroadcast({
@@ -208,7 +252,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 4. Mở đáp án chính xác
+  // 4. Mở đáp án
   const handleRevealAnswer = async () => {
     setIsRevealed(true)
     const colorMap: Record<string, string> = { A: 'red', B: 'green', C: 'yellow', D: 'blue' }
@@ -219,7 +263,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 5. Bật Bảng Xếp Hạng Leaderboard
+  // 5. Bảng điểm
   const handleShowLeaderboard = async () => {
     await onBroadcast({
       type: 'UPDATE_LEADERBOARD',
@@ -232,14 +276,14 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 6. Bắn pháo hoa khích lệ
+  // 6. Pháo hoa
   const handleConfetti = async () => {
     await onBroadcast({
       type: 'TRIGGER_CONFETTI',
     })
   }
 
-  // 7. Đặt lại màn hình TV
+  // 7. Xoá màn hình
   const handleReset = async () => {
     setIsRevealed(false)
     setIsTimerRunning(false)
@@ -247,23 +291,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     await onBroadcast({
       type: 'RESET_VIEW',
     })
-  }
-
-  // Chuyển câu hỏi trước/sau
-  const handlePrevQuestion = () => {
-    if (currentIdx > 0) {
-      setCurrentIdx(currentIdx - 1)
-      setIsRevealed(false)
-      setIsTimerRunning(false)
-    }
-  }
-
-  const handleNextQuestion = () => {
-    if (currentIdx < questions.length - 1) {
-      setCurrentIdx(currentIdx + 1)
-      setIsRevealed(false)
-      setIsTimerRunning(false)
-    }
   }
 
   return (
@@ -281,21 +308,77 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-2 rounded-xl border transition-all flex items-center gap-1 text-xs font-bold ${
+              showSettings ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-[var(--color-surface-alt)] text-slate-700'
+            }`}
+            title="Cài đặt thời gian đếm ngược"
+          >
+            <Sliders size={14} />
+            <span>⏱️ {countdownSeconds}s</span>
+          </button>
+
+          <button
             onClick={fetchSessionData}
             disabled={isLoadingSession}
             className="p-2 rounded-xl border bg-[var(--color-surface-alt)] hover:bg-slate-200 text-slate-700 transition-all flex items-center gap-1.5 text-xs font-bold"
             title="Tải lại câu hỏi từ phiên trò chơi mới nhất"
           >
             <RefreshCw size={14} className={isLoadingSession ? 'animate-spin text-[var(--color-primary)]' : ''} />
-            <span>Làm mới</span>
           </button>
-
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-bold border border-green-200">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
-            Đồng bộ
-          </div>
         </div>
       </div>
+
+      {/* ─── BẢNG CÀI ĐẶT THỜI GIAN ĐẾM NGƯỢC (COLLAPSIBLE SETTING PANEL) ─── */}
+      {showSettings && (
+        <Card padding="md" className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 shadow-sm flex flex-col gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+              <Clock size={15} />
+              CÀI ĐẶT THỜI GIAN ĐẾM NGƯỢC
+            </span>
+            <span className="text-xs font-extrabold text-amber-800 font-mono">
+              Đang chọn: {countdownSeconds} giây
+            </span>
+          </div>
+
+          {/* Chọn nhanh các mốc thời gian */}
+          <div className="grid grid-cols-6 gap-1.5">
+            {TIMER_PRESETS.map(sec => (
+              <button
+                key={sec}
+                onClick={() => handleUpdateDuration(sec)}
+                className={`py-2 rounded-xl font-black text-xs transition-all ${
+                  countdownSeconds === sec
+                    ? 'bg-amber-500 text-white shadow-md scale-105 border-2 border-amber-600'
+                    : 'bg-white text-slate-700 border border-amber-200 hover:bg-amber-100'
+                }`}
+              >
+                {sec}s
+              </button>
+            ))}
+          </div>
+
+          {/* Bật/Tắt Tự động chạy đếm ngược khi đổi câu */}
+          <div
+            onClick={handleToggleAutoTimer}
+            className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-amber-200 cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-2">
+              <Zap size={16} className={autoStartTimer ? 'text-amber-500 fill-amber-500' : 'text-slate-400'} />
+              <div className="text-left">
+                <span className="text-xs font-bold text-slate-800 block">Tự động đếm ngược khi đổi câu</span>
+                <span className="text-[10px] text-slate-500">Đẩy câu lên TV là đồng hồ tự chạy ngay</span>
+              </div>
+            </div>
+            <div className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors ${
+              autoStartTimer ? 'bg-amber-500 justify-end' : 'bg-slate-300 justify-start'
+            }`}>
+              <div className="bg-white w-4 h-4 rounded-full shadow-md" />
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Thông tin trò chơi & Môn học */}
       <div className="flex items-center justify-between gap-2 px-1">
@@ -328,15 +411,18 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             <button
               onClick={handlePrevQuestion}
               disabled={currentIdx === 0}
-              className="p-1.5 rounded-lg border bg-[var(--color-surface-alt)] disabled:opacity-30"
+              className="p-1.5 rounded-lg border bg-[var(--color-surface-alt)] disabled:opacity-30 flex items-center gap-1 text-xs font-bold"
+              title="Về câu trước"
             >
               <ChevronLeft size={16} />
             </button>
             <button
-              onClick={handleNextQuestion}
+              onClick={handleNextQuestionAndSend}
               disabled={currentIdx === questions.length - 1}
-              className="p-1.5 rounded-lg border bg-[var(--color-surface-alt)] disabled:opacity-30"
+              className="p-1.5 px-2 rounded-lg border bg-[var(--color-primary)] text-white disabled:opacity-30 flex items-center gap-1 text-xs font-black shadow-xs"
+              title="Sang câu tiếp theo và tự động phát + đếm ngược"
             >
+              <span>Câu sau</span>
               <ChevronRight size={16} />
             </button>
           </div>
@@ -349,8 +435,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
               key={i}
               onClick={() => {
                 setCurrentIdx(i)
-                setIsRevealed(false)
-                setIsTimerRunning(false)
+                sendQuestionToTV(i)
               }}
               className={`w-7 h-7 flex-shrink-0 rounded-lg font-bold text-xs transition-all ${
                 currentIdx === i
@@ -390,14 +475,14 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           })}
         </div>
 
-        {/* Nút gửi câu hỏi lên TV */}
+        {/* Nút gửi câu hỏi lên TV (kèm tự động đếm ngược) */}
         <Button
-          onClick={handleSendQuestion}
+          onClick={handleSendCurrentQuestion}
           size="lg"
           leftIcon={<Send size={18} />}
-          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-black shadow-md"
+          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-black shadow-md py-3.5"
         >
-          📺 Đẩy câu này lên màn chiếu TV
+          📺 Đẩy câu này lên TV {autoStartTimer ? `+ Đếm ngược ${countdownSeconds}s ⏱️` : ''}
         </Button>
       </Card>
 
@@ -410,12 +495,12 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         <div className="grid grid-cols-2 gap-2">
           <Button
             variant="secondary"
-            onClick={() => handleStartTimer(15)}
+            onClick={() => handleStartTimer(countdownSeconds)}
             leftIcon={<Clock size={16} />}
             disabled={isTimerRunning}
             className="font-bold text-xs"
           >
-            ⏱️ Đếm ngược 15s
+            ⏱️ Đếm lại {countdownSeconds}s
           </Button>
 
           <Button
