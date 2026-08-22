@@ -309,36 +309,37 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className={`p-2 rounded-xl border transition-all flex items-center gap-1 text-xs font-bold ${
+            className={`p-2 rounded-xl border transition-all flex items-center gap-1.5 text-xs font-bold ${
               showSettings ? 'bg-amber-50 text-amber-800 border-amber-300' : 'bg-[var(--color-surface-alt)] text-slate-700'
             }`}
             title="Cài đặt thời gian đếm ngược"
           >
             <Sliders size={14} />
-            <span>⏱️ {countdownSeconds}s</span>
+            <span>{countdownSeconds}s</span>
           </button>
 
           <button
             onClick={fetchSessionData}
             disabled={isLoadingSession}
-            className="p-2 rounded-xl border bg-[var(--color-surface-alt)] hover:bg-slate-200 text-slate-700 transition-all flex items-center gap-1.5 text-xs font-bold"
+            className="p-2 rounded-xl border bg-[var(--color-surface-alt)] hover:bg-slate-200 text-slate-700 transition-all flex items-center gap-1 text-xs font-bold"
             title="Tải lại câu hỏi từ phiên trò chơi mới nhất"
           >
             <RefreshCw size={14} className={isLoadingSession ? 'animate-spin text-[var(--color-primary)]' : ''} />
+            <span>Làm mới</span>
           </button>
         </div>
       </div>
 
-      {/* ─── BẢNG CÀI ĐẶT THỜI GIAN ĐẾM NGƯỢC (COLLAPSIBLE SETTING PANEL) ─── */}
+      {/* ─── BẢNG CÀI ĐẶT THỜI GIAN ĐẾM NGƯỢC ─── */}
       {showSettings && (
         <Card padding="md" className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 shadow-sm flex flex-col gap-3 animate-in fade-in duration-200">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black text-amber-900 flex items-center gap-1.5">
               <Clock size={15} />
-              CÀI ĐẶT THỜI GIAN ĐẾM NGƯỢC
+              Cài đặt thời gian đếm ngược
             </span>
             <span className="text-xs font-extrabold text-amber-800 font-mono">
-              Đang chọn: {countdownSeconds} giây
+              {countdownSeconds} giây
             </span>
           </div>
 
@@ -388,7 +389,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           </span>
           {currentQ.subject && (
             <Badge variant="secondary">
-              📚 {currentQ.subject}
+              {currentQ.subject}
             </Badge>
           )}
         </div>
@@ -475,21 +476,21 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           })}
         </div>
 
-        {/* Nút gửi câu hỏi lên TV (kèm tự động đếm ngược) */}
+        {/* Nút gửi câu hỏi lên TV */}
         <Button
           onClick={handleSendCurrentQuestion}
           size="lg"
           leftIcon={<Send size={18} />}
           className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-black shadow-md py-3.5"
         >
-          📺 Đẩy câu này lên TV {autoStartTimer ? `+ Đếm ngược ${countdownSeconds}s ⏱️` : ''}
+          Đẩy câu này lên màn chiếu TV {autoStartTimer ? `(${countdownSeconds}s)` : ''}
         </Button>
       </Card>
 
       {/* Điều khiển luồng trong giờ học */}
       <Card padding="md" className="flex flex-col gap-2.5 border shadow-sm">
         <span className="text-[11px] font-black tracking-wider text-[var(--color-text-muted)] uppercase">
-          ⚡ Thao Tác Trong Tiết Học
+          Thao tác điều khiển
         </span>
 
         <div className="grid grid-cols-2 gap-2">
@@ -500,7 +501,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             disabled={isTimerRunning}
             className="font-bold text-xs"
           >
-            ⏱️ Đếm lại {countdownSeconds}s
+            Đếm lại ({countdownSeconds}s)
           </Button>
 
           <Button
@@ -509,7 +510,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             leftIcon={<Camera size={16} />}
             className="font-bold text-xs border border-slate-200 bg-sky-50 text-sky-800 hover:bg-sky-100"
           >
-            📸 Quét Thẻ Màu
+            Quét thẻ màu
           </Button>
         </div>
 
@@ -534,8 +535,8 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-md text-sm py-3"
         >
           {isRevealed
-            ? `✓ Đã mở đáp án đúng: [ ${currentQ.correctAnswer} ]`
-            : `✨ Mở đáp án đúng (${currentQ.correctAnswer}) + Thưởng sao`}
+            ? `Đã mở đáp án: [ ${currentQ.correctAnswer} ]`
+            : `Mở đáp án đúng (${currentQ.correctAnswer})`}
         </Button>
       </Card>
 
@@ -548,7 +549,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           leftIcon={<Trophy size={14} />}
           className="font-bold text-xs border bg-white"
         >
-          Top Điểm
+          Bảng điểm
         </Button>
         <Button
           variant="ghost"

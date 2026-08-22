@@ -780,10 +780,10 @@ export default function CalloutGamePage() {
               <Button
                 size="xl"
                 onClick={startDuckRace}
-                leftIcon={<Play size={24} className="fill-current" />}
-                className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black px-10 py-5 rounded-2xl shadow-2xl hover:scale-105 transition-all text-lg border-2 border-amber-200"
+                leftIcon={<Play size={22} className="fill-current" />}
+                className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black px-10 py-4 rounded-2xl shadow-2xl hover:scale-105 transition-all text-base border-2 border-amber-200"
               >
-                🚀 BẮT ĐẦU ĐUA VỊT GỌI TÊN
+                Bắt đầu đua vịt gọi tên
               </Button>
             </div>
           )}
@@ -799,7 +799,7 @@ export default function CalloutGamePage() {
               <h2 className="text-2xl font-black text-amber-300 mb-2">Toàn bộ học sinh đã được gọi!</h2>
               <p className="text-xs text-white/80 mb-4">Bạn đã gọi đủ {students.length}/{students.length} học sinh trong lớp.</p>
               <Button size="lg" onClick={handleResetCalled} leftIcon={<RotateCcw size={18} />}>
-                🔄 Reset và bắt đầu vòng mới
+                Reset và bắt đầu vòng mới
               </Button>
             </div>
           ) : (
@@ -828,10 +828,10 @@ export default function CalloutGamePage() {
                 size="xl"
                 onClick={startSpinWheel}
                 disabled={isSpinning || availableStudents.length === 0}
-                leftIcon={<Disc size={24} className={isSpinning ? 'animate-spin' : ''} />}
-                className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black px-12 py-5 rounded-2xl shadow-2xl hover:scale-105 transition-all text-lg border-2 border-amber-200"
+                leftIcon={<Disc size={22} className={isSpinning ? 'animate-spin' : ''} />}
+                className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black px-12 py-4 rounded-2xl shadow-2xl hover:scale-105 transition-all text-base border-2 border-amber-200"
               >
-                {isSpinning ? '🎡 ĐANG QUAY...' : '🎯 QUAY NGAY (SPIN!)'}
+                {isSpinning ? 'Đang quay...' : 'Quay ngay'}
               </Button>
             </div>
           )}
@@ -850,7 +850,7 @@ export default function CalloutGamePage() {
             </div>
             <div>
               <span className="text-xs font-black uppercase tracking-wider bg-amber-900/10 text-amber-950 px-3 py-1 rounded-full inline-block mb-1">
-                🎉 ĐÃ TÌM THẤY BẠN LÊN BẢNG!
+                ĐÃ TÌM THẤY BẠN LÊN BẢNG
               </span>
               <h2 className="text-3xl font-black text-amber-950 leading-tight">
                 Xin mời bạn: <span className="underline decoration-wavy decoration-amber-600">{winner.student.name}</span>
@@ -869,7 +869,7 @@ export default function CalloutGamePage() {
               leftIcon={<Star size={18} className="text-amber-500 fill-amber-500" />}
               className="bg-white text-slate-900 hover:bg-slate-50 border-2 border-amber-300 font-bold"
             >
-              {scoreAwarded ? '✓ Đã cộng 10 Sao' : '+10 Sao Trả Bài Tốt'}
+              {scoreAwarded ? 'Đã cộng 10 Sao' : '+10 Sao trả bài tốt'}
             </Button>
 
             <Button

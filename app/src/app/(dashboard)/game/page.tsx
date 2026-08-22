@@ -361,10 +361,10 @@ export default function GameLauncherPage() {
           size="xl"
           onClick={handleStartGame}
           isLoading={isLoading}
-          leftIcon={<Play size={22} className="fill-current" />}
-          className="w-full sm:w-auto"
+          leftIcon={<Play size={20} className="fill-current" />}
+          className="w-full sm:w-auto font-bold"
         >
-          🚀 BẮT ĐẦU TRÒ CHƠI NGAY
+          Bắt đầu trò chơi ngay
         </Button>
       </div>
     </div>
