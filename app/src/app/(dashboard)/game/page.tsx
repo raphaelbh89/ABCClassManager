@@ -177,6 +177,9 @@ export default function GameLauncherPage() {
         },
       })
 
+      // Xoá sự kiện cũ của phòng để Display bắt đầu ở Màn hình chờ
+      await fetch(`/api/realtime?roomCode=${encodeURIComponent(roomCode)}`, { method: 'DELETE' }).catch(() => {})
+
       // Mở Display mode trên tab mới và chuyển hướng trang hiện tại sang Scanner mode
       window.open(`/display?code=${roomCode}`, '_blank')
       router.push(`/scanner?code=${roomCode}`)

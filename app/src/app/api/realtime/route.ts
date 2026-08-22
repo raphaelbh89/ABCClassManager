@@ -34,3 +34,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
+
+export async function DELETE(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const roomCode = searchParams.get('roomCode')
+  if (roomCode) {
+    roomEvents.delete(roomCode.toUpperCase())
+  }
+  return NextResponse.json({ success: true })
+}

@@ -73,7 +73,7 @@ export function subscribeToRoom(
   onMessage: (event: RealtimeEvent) => void
 ) {
   let isSubscribed = true
-  let lastTimestamp = 0
+  let lastTimestamp = Date.now()
 
   const interval = setInterval(async () => {
     if (!isSubscribed) return
