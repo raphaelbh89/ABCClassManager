@@ -387,7 +387,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       duel_state: gameType === 'arena' ? { p1: updatedP1, p2: updatedP2 } : undefined,
       team_state: gameType === 'team' ? updatedTeams : undefined,
       boss_state: gameType === 'boss' ? updatedBoss : undefined,
-      leaderboard: updatedLeaderboard.length > 0 ? updatedLeaderboard : undefined,
     })
   }
 

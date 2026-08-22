@@ -106,10 +106,10 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
 
       case 'REVEAL_ANSWER':
         setRevealedAnswer(lastEvent.correctAnswer)
+        setLeaderboard(null) // Đảm bảo luôn hiện rõ màn hình câu hỏi và ô đáp án đúng
         if (lastEvent.duel_state) setDuelState(lastEvent.duel_state)
         if (lastEvent.team_state) setTeamState(lastEvent.team_state)
         if (lastEvent.boss_state) setBossState(lastEvent.boss_state)
-        if (lastEvent.leaderboard) setLeaderboard(lastEvent.leaderboard)
 
         confetti({
           particleCount: 90,
@@ -123,7 +123,6 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         if (lastEvent.duel_state) setDuelState(lastEvent.duel_state)
         if (lastEvent.team_state) setTeamState(lastEvent.team_state)
         if (lastEvent.boss_state) setBossState(lastEvent.boss_state)
-        if (lastEvent.leaderboard) setLeaderboard(lastEvent.leaderboard)
         break
 
       case 'TRIGGER_CONFETTI':
@@ -173,20 +172,20 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
 
   return (
     <div className="relative min-h-screen w-full flex flex-col justify-between p-6 bg-gradient-to-b from-amber-50/40 via-white to-slate-50 overflow-hidden select-none">
-      {/* ─── ĐỒNG HỒ ĐẾM NGƯỢC TOP-CENTER (120px) ─── */}
+      {/* ─── ĐỒNG HỒ ĐẾM NGƯỢC TOP-CENTER NHỎ GỌN (70px) ─── */}
       {timeLeft !== null && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in zoom-in-75 duration-300">
+        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-in zoom-in-75 duration-300">
           <div
-            className={`w-[120px] h-[120px] rounded-full border-4 shadow-2xl flex flex-col items-center justify-center relative transition-all ${
+            className={`w-[72px] h-[72px] rounded-full border-3 shadow-xl flex flex-col items-center justify-center relative transition-all ${
               timeLeft <= 5 && timeLeft > 0
-                ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white border-red-300 ring-8 ring-red-400/40 animate-pulse scale-105'
+                ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white border-red-300 ring-4 ring-red-400/40 animate-pulse scale-105'
                 : timeLeft === 0
-                ? 'bg-slate-900 text-white border-slate-700 ring-4 ring-slate-500/20'
-                : 'bg-gradient-to-br from-amber-400 via-amber-300 to-yellow-400 text-slate-950 border-white ring-8 ring-amber-400/30'
+                ? 'bg-slate-900 text-white border-slate-700 ring-2 ring-slate-500/20'
+                : 'bg-gradient-to-br from-amber-400 via-amber-300 to-yellow-400 text-slate-950 border-white ring-4 ring-amber-400/30'
             }`}
           >
-            <div className="absolute inset-0 flex items-center justify-center opacity-25">
-              <Clock size={80} />
+            <div className="absolute inset-0 flex items-center justify-center opacity-20">
+              <Clock size={44} />
             </div>
 
             <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
@@ -205,10 +204,10 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
               />
             </svg>
 
-            <span className="text-3xl sm:text-4xl font-black font-mono tracking-tighter drop-shadow-md relative z-10 leading-none">
+            <span className="text-2xl font-black font-mono tracking-tighter drop-shadow-sm relative z-10 leading-none">
               {timeLeft}
             </span>
-            <span className="text-[10px] font-extrabold uppercase tracking-widest mt-0.5 opacity-90 relative z-10">
+            <span className="text-[8px] font-black uppercase tracking-wider mt-0.5 opacity-90 relative z-10">
               {timeLeft === 0 ? 'HẾT GIỜ' : 'GIÂY'}
             </span>
           </div>
