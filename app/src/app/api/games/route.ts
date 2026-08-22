@@ -7,6 +7,19 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
     const classId = searchParams.get('classId')
+    const roomCode = searchParams.get('roomCode') || searchParams.get('room_code')
+
+    // Nếu tìm theo roomCode cụ thể
+    if (roomCode) {
+      const row = db.prepare('SELECT * FROM game_sessions WHERE room_code = ? ORDER BY created_at DESC LIMIT 1').get(roomCode.toUpperCase()) as any
+      if (row) {
+        return NextResponse.json({
+          ...row,
+          template: JSON.parse(row.template || '{}'),
+        })
+      }
+      return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+    }
 
     let query = 'SELECT * FROM game_sessions'
     let params: any[] = []

@@ -1,8 +1,10 @@
 'use client'
 // src/components/scanner/ScannerControlPanel.tsx
-import { useState } from 'react'
+// Bảng Điều Khiển Quét Thẻ & Luồng Trò Chơi trên Mobile
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/common/Button'
 import { Card } from '@/components/common/Card'
+import { Badge } from '@/components/common/Badge'
 import { CardScannerModal } from './CardScannerModal'
 import {
   Play,
@@ -13,6 +15,15 @@ import {
   Sparkles,
   RotateCcw,
   Send,
+  RefreshCw,
+  HelpCircle,
+  Layers,
+  ChevronLeft,
+  ChevronRight,
+  Flame,
+  Swords,
+  Users,
+  ShieldAlert,
 } from 'lucide-react'
 import type { RealtimeEvent } from '@/services/sync'
 
@@ -21,9 +32,28 @@ interface ScannerControlPanelProps {
   onBroadcast: (event: RealtimeEvent) => Promise<void>
 }
 
-// Bộ câu hỏi mẫu để test ngay
-const SAMPLE_QUESTIONS = [
+interface QuestionItem {
+  id: string
+  content: string
+  options: Array<{ label: string; text: string }>
+  correctAnswer: string
+  subject?: string
+  grade?: number
+  question_type?: string
+}
+
+// Chế độ game nhãn đẹp
+const GAME_MODE_LABELS: Record<string, { label: string; icon: any; color: string }> = {
+  classic: { label: '🏆 Cá Nhân', icon: Trophy, color: 'bg-amber-50 text-amber-800 border-amber-300' },
+  arena: { label: '⚔️ Đấu Trường 1v1', icon: Swords, color: 'bg-red-50 text-red-800 border-red-300' },
+  team: { label: '👥 Đấu Đội Nhóm', icon: Users, color: 'bg-blue-50 text-blue-800 border-blue-300' },
+  boss: { label: '🐉 Đánh Boss', icon: ShieldAlert, color: 'bg-purple-50 text-purple-800 border-purple-300' },
+}
+
+// Fallback questions mẫu khi chưa có session
+const DEFAULT_QUESTIONS: QuestionItem[] = [
   {
+    id: 'sample-1',
     content: '5 × 6 bằng bao nhiêu?',
     options: [
       { label: 'A', text: '25' },
@@ -34,6 +64,7 @@ const SAMPLE_QUESTIONS = [
     correctAnswer: 'B',
   },
   {
+    id: 'sample-2',
     content: 'Thủ đô của Việt Nam là thành phố nào?',
     options: [
       { label: 'A', text: 'Hồ Chí Minh' },
@@ -44,6 +75,7 @@ const SAMPLE_QUESTIONS = [
     correctAnswer: 'C',
   },
   {
+    id: 'sample-3',
     content: 'Từ nào sau đây viết đúng chính tả?',
     options: [
       { label: 'A', text: 'Xinh đẹp' },
@@ -56,53 +88,138 @@ const SAMPLE_QUESTIONS = [
 ]
 
 export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPanelProps) {
+  const [questions, setQuestions] = useState<QuestionItem[]>(DEFAULT_QUESTIONS)
   const [currentIdx, setCurrentIdx] = useState(0)
+  const [gameSession, setGameSession] = useState<any>(null)
+  const [isLoadingSession, setIsLoadingSession] = useState(false)
   const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [isRevealed, setIsRevealed] = useState(false)
   const [isScannerOpen, setIsScannerOpen] = useState(false)
+  const [lastScanCounts, setLastScanCounts] = useState<{ red: number; green: number; yellow: number; blue: number } | null>(null)
 
-  const currentQ = SAMPLE_QUESTIONS[currentIdx]
+  // Hàm tải dữ liệu Game Session thật từ database theo roomCode
+  const fetchSessionData = useCallback(async () => {
+    if (!roomCode) return
+    setIsLoadingSession(true)
+    try {
+      const res = await fetch(`/api/games?roomCode=${encodeURIComponent(roomCode.trim().toUpperCase())}`)
+      if (res.ok) {
+        const session = await res.json()
+        setGameSession(session)
 
-  // Đẩy câu hỏi lên màn chiếu
+        const rawQuestions = session?.template?.questions || []
+        if (Array.isArray(rawQuestions) && rawQuestions.length > 0) {
+          const normalized: QuestionItem[] = rawQuestions.map((q: any, idx: number) => {
+            let options = q.options
+            if (typeof options === 'string') {
+              try { options = JSON.parse(options) } catch {}
+            }
+
+            // Nếu options là mảng chuỗi đơn giản
+            if (Array.isArray(options) && typeof options[0] === 'string') {
+              const labels = ['A', 'B', 'C', 'D', 'E', 'F']
+              options = options.map((text: string, i: number) => ({
+                label: labels[i] || `${i + 1}`,
+                text: String(text),
+              }))
+            } else if (!Array.isArray(options) || options.length === 0) {
+              // Mặc định nếu là Đúng/Sai
+              if (q.question_type === 'true_false' || q.question_type === 'truefalse') {
+                options = [
+                  { label: 'A', text: 'Đúng (True)' },
+                  { label: 'B', text: 'Sai (False)' },
+                ]
+              } else {
+                options = [
+                  { label: 'A', text: 'Phương án A' },
+                  { label: 'B', text: 'Phương án B' },
+                  { label: 'C', text: 'Phương án C' },
+                  { label: 'D', text: 'Phương án D' },
+                ]
+              }
+            }
+
+            return {
+              id: q.id || `q-${idx}`,
+              content: q.content || q.title || q.question || 'Câu hỏi',
+              options,
+              correctAnswer: q.correct_answer || q.correctAnswer || 'A',
+              subject: q.subject,
+              grade: q.grade,
+              question_type: q.question_type || 'mcq',
+            }
+          })
+
+          setQuestions(normalized)
+          setCurrentIdx(0)
+          setIsRevealed(false)
+          setIsTimerRunning(false)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load game session for room', roomCode, err)
+    } finally {
+      setIsLoadingSession(false)
+    }
+  }, [roomCode])
+
+  // Tự động load dữ liệu khi vào trang
+  useEffect(() => {
+    fetchSessionData()
+  }, [fetchSessionData])
+
+  const currentQ = questions[currentIdx] || DEFAULT_QUESTIONS[0]
+  const gameModeInfo = GAME_MODE_LABELS[gameSession?.game_type] || GAME_MODE_LABELS.classic
+
+  // 1. Đẩy câu hỏi lên màn chiếu TV
   const handleSendQuestion = async () => {
     setIsRevealed(false)
     setIsTimerRunning(false)
+    setLastScanCounts(null)
     await onBroadcast({
       type: 'SHOW_QUESTION',
-      question: currentQ,
+      question: {
+        id: currentQ.id,
+        content: currentQ.content,
+        options: currentQ.options,
+        correctAnswer: currentQ.correctAnswer,
+        question_type: currentQ.question_type,
+      },
       index: currentIdx + 1,
-      total: SAMPLE_QUESTIONS.length,
+      total: questions.length,
     })
   }
 
-  // Bắt đầu đếm ngược 15s
-  const handleStartTimer = async () => {
+  // 2. Bắt đầu đếm ngược 15s
+  const handleStartTimer = async (seconds = 15) => {
     setIsTimerRunning(true)
     await onBroadcast({
       type: 'START_TIMER',
-      seconds: 15,
+      seconds,
     })
   }
 
-  // Nhận kết quả quét từ Camera thật
+  // 3. Nhận kết quả quét thẻ từ Camera thật
   const handleScanConfirm = async (counts: { red: number; green: number; yellow: number; blue: number }) => {
+    setLastScanCounts(counts)
     await onBroadcast({
       type: 'SCAN_PREVIEW',
       counts,
     })
   }
 
-  // Mở đáp án chính xác
+  // 4. Mở đáp án chính xác
   const handleRevealAnswer = async () => {
     setIsRevealed(true)
+    const colorMap: Record<string, string> = { A: 'red', B: 'green', C: 'yellow', D: 'blue' }
     await onBroadcast({
       type: 'REVEAL_ANSWER',
       correctAnswer: currentQ.correctAnswer,
-      isCorrectColor: currentQ.correctAnswer === 'B' ? 'green' : 'blue',
+      isCorrectColor: colorMap[currentQ.correctAnswer] || 'green',
     })
   }
 
-  // Bật Leaderboard
+  // 5. Bật Bảng Xếp Hạng Leaderboard
   const handleShowLeaderboard = async () => {
     await onBroadcast({
       type: 'UPDATE_LEADERBOARD',
@@ -115,83 +232,188 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // Bắn pháo hoa khích lệ
+  // 6. Bắn pháo hoa khích lệ
   const handleConfetti = async () => {
     await onBroadcast({
       type: 'TRIGGER_CONFETTI',
     })
   }
 
-  // Đặt lại màn hình
+  // 7. Đặt lại màn hình TV
   const handleReset = async () => {
+    setIsRevealed(false)
+    setIsTimerRunning(false)
+    setLastScanCounts(null)
     await onBroadcast({
       type: 'RESET_VIEW',
     })
   }
 
+  // Chuyển câu hỏi trước/sau
+  const handlePrevQuestion = () => {
+    if (currentIdx > 0) {
+      setCurrentIdx(currentIdx - 1)
+      setIsRevealed(false)
+      setIsTimerRunning(false)
+    }
+  }
+
+  const handleNextQuestion = () => {
+    if (currentIdx < questions.length - 1) {
+      setCurrentIdx(currentIdx + 1)
+      setIsRevealed(false)
+      setIsTimerRunning(false)
+    }
+  }
+
   return (
-    <div className="max-w-md mx-auto flex flex-col gap-4 pb-16">
-      {/* Header trạng thái */}
-      <div className="bg-white p-4 rounded-2xl border border-[var(--color-border)] shadow-sm flex items-center justify-between">
+    <div className="max-w-md mx-auto flex flex-col gap-3 pb-16">
+      {/* Header trạng thái phòng */}
+      <div className="bg-white p-3.5 rounded-2xl border border-[var(--color-border)] shadow-xs flex items-center justify-between">
         <div>
-          <span className="text-xs text-[var(--color-text-muted)] font-semibold block">
-            Đang kết nối phòng
+          <span className="text-[11px] text-[var(--color-text-muted)] font-semibold block">
+            Mã phòng điều khiển
           </span>
-          <span className="text-xl font-black text-[var(--color-accent)] font-mono">
+          <span className="text-2xl font-black text-[var(--color-primary)] font-mono tracking-wider">
             {roomCode}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-bold border border-green-200">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
-          Real-time Đồng bộ
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchSessionData}
+            disabled={isLoadingSession}
+            className="p-2 rounded-xl border bg-[var(--color-surface-alt)] hover:bg-slate-200 text-slate-700 transition-all flex items-center gap-1.5 text-xs font-bold"
+            title="Tải lại câu hỏi từ phiên trò chơi mới nhất"
+          >
+            <RefreshCw size={14} className={isLoadingSession ? 'animate-spin text-[var(--color-primary)]' : ''} />
+            <span>Làm mới</span>
+          </button>
+
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 text-green-700 text-xs font-bold border border-green-200">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
+            Đồng bộ
+          </div>
         </div>
       </div>
 
-      {/* Bộ chọn câu hỏi */}
-      <Card padding="md" className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-bold text-[var(--color-text)]">
-            Câu hỏi hiện tại ({currentIdx + 1}/{SAMPLE_QUESTIONS.length})
+      {/* Thông tin trò chơi & Môn học */}
+      <div className="flex items-center justify-between gap-2 px-1">
+        <div className="flex items-center gap-1.5">
+          <span className={`px-2.5 py-1 rounded-xl text-xs font-black border flex items-center gap-1 ${gameModeInfo.color}`}>
+            <span>{gameModeInfo.label}</span>
           </span>
-          <div className="flex gap-1">
-            {SAMPLE_QUESTIONS.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setCurrentIdx(i)}
-                className={`w-8 h-8 rounded-lg font-bold text-xs transition-all ${
-                  currentIdx === i
-                    ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                    : 'bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] hover:bg-slate-200'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
+          {currentQ.subject && (
+            <Badge variant="secondary">
+              📚 {currentQ.subject}
+            </Badge>
+          )}
+        </div>
+        <span className="text-xs font-bold text-[var(--color-text-muted)]">
+          Đã tải {questions.length} câu hỏi
+        </span>
+      </div>
+
+      {/* Card Hiển thị Câu hỏi & Thao tác chuyển câu */}
+      <Card padding="md" className="flex flex-col gap-3 border shadow-sm">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-2">
+          <div className="flex items-center gap-1.5">
+            <HelpCircle size={17} className="text-[var(--color-primary)]" />
+            <span className="text-sm font-black text-[var(--color-text)]">
+              Câu {currentIdx + 1} / {questions.length}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handlePrevQuestion}
+              disabled={currentIdx === 0}
+              className="p-1.5 rounded-lg border bg-[var(--color-surface-alt)] disabled:opacity-30"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              onClick={handleNextQuestion}
+              disabled={currentIdx === questions.length - 1}
+              className="p-1.5 rounded-lg border bg-[var(--color-surface-alt)] disabled:opacity-30"
+            >
+              <ChevronRight size={16} />
+            </button>
           </div>
         </div>
 
-        <p className="font-extrabold text-base text-[var(--color-text)] bg-[var(--color-surface-alt)] p-3 rounded-xl">
-          {currentQ.content}
-        </p>
+        {/* Thanh chọn nhanh số câu */}
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          {questions.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => {
+                setCurrentIdx(i)
+                setIsRevealed(false)
+                setIsTimerRunning(false)
+              }}
+              className={`w-7 h-7 flex-shrink-0 rounded-lg font-bold text-xs transition-all ${
+                currentIdx === i
+                  ? 'bg-[var(--color-primary)] text-white shadow-xs'
+                  : 'bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] hover:bg-slate-200'
+              }`}
+            >
+              {i + 1}
+            </button>
+          ))}
+        </div>
 
-        {/* Nút gửi câu hỏi lên màn chiếu */}
-        <Button onClick={handleSendQuestion} size="lg" leftIcon={<Send size={18} />}>
-          📺 Đẩy câu hỏi lên màn chiếu TV
+        {/* Nội dung câu hỏi */}
+        <div className="bg-[var(--color-surface-alt)] p-3.5 rounded-xl border border-slate-200">
+          <p className="font-extrabold text-sm sm:text-base text-[var(--color-text)] leading-snug">
+            {currentQ.content}
+          </p>
+        </div>
+
+        {/* Danh sách các phương án */}
+        <div className="grid grid-cols-2 gap-2">
+          {currentQ.options.map(opt => {
+            const isCorrect = isRevealed && opt.label === currentQ.correctAnswer
+            return (
+              <div
+                key={opt.label}
+                className={`p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                  isCorrect
+                    ? 'bg-green-100 border-green-500 text-green-900 ring-2 ring-green-400'
+                    : 'bg-white border-slate-200 text-slate-700'
+                }`}
+              >
+                <span className="font-black mr-1 text-[var(--color-primary)]">{opt.label}.</span>
+                <span>{opt.text}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Nút gửi câu hỏi lên TV */}
+        <Button
+          onClick={handleSendQuestion}
+          size="lg"
+          leftIcon={<Send size={18} />}
+          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-black shadow-md"
+        >
+          📺 Đẩy câu này lên màn chiếu TV
         </Button>
       </Card>
 
-      {/* Điều khiển luồng câu hỏi */}
-      <Card padding="md" className="flex flex-col gap-3">
-        <span className="text-xs font-bold text-[var(--color-text-muted)]">
-          BƯỚC THAO TÁC TRONG GIỜ HỌC
+      {/* Điều khiển luồng trong giờ học */}
+      <Card padding="md" className="flex flex-col gap-2.5 border shadow-sm">
+        <span className="text-[11px] font-black tracking-wider text-[var(--color-text-muted)] uppercase">
+          ⚡ Thao Tác Trong Tiết Học
         </span>
 
         <div className="grid grid-cols-2 gap-2">
           <Button
             variant="secondary"
-            onClick={handleStartTimer}
+            onClick={() => handleStartTimer(15)}
             leftIcon={<Clock size={16} />}
             disabled={isTimerRunning}
+            className="font-bold text-xs"
           >
             ⏱️ Đếm ngược 15s
           </Button>
@@ -200,29 +422,46 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             variant="ghost"
             onClick={() => setIsScannerOpen(true)}
             leftIcon={<Camera size={16} />}
+            className="font-bold text-xs border border-slate-200 bg-sky-50 text-sky-800 hover:bg-sky-100"
           >
-            📸 Bật Camera Quét Thẻ
+            📸 Quét Thẻ Màu
           </Button>
         </div>
+
+        {/* Thống kê quét thẻ gần nhất nếu có */}
+        {lastScanCounts && (
+          <div className="flex justify-between items-center bg-slate-100 px-3 py-1.5 rounded-xl text-xs font-bold">
+            <span className="text-slate-500">Đã quét:</span>
+            <div className="flex gap-2">
+              <span className="text-red-600">🔴 {lastScanCounts.red}</span>
+              <span className="text-green-600">🟢 {lastScanCounts.green}</span>
+              <span className="text-amber-600">🟡 {lastScanCounts.yellow}</span>
+              <span className="text-blue-600">🔵 {lastScanCounts.blue}</span>
+            </div>
+          </div>
+        )}
 
         <Button
           variant="primary"
           onClick={handleRevealAnswer}
           leftIcon={<CheckCircle2 size={18} />}
           disabled={isRevealed}
-          className="w-full bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)]"
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-md text-sm py-3"
         >
-          ✨ Mở đáp án ({currentQ.correctAnswer}) + Thưởng điểm
+          {isRevealed
+            ? `✓ Đã mở đáp án đúng: [ ${currentQ.correctAnswer} ]`
+            : `✨ Mở đáp án đúng (${currentQ.correctAnswer}) + Thưởng sao`}
         </Button>
       </Card>
 
-      {/* Tính năng phụ trợ */}
+      {/* Công cụ bổ trợ nhanh */}
       <div className="grid grid-cols-3 gap-2">
         <Button
           variant="ghost"
           size="sm"
           onClick={handleShowLeaderboard}
           leftIcon={<Trophy size={14} />}
+          className="font-bold text-xs border bg-white"
         >
           Top Điểm
         </Button>
@@ -231,6 +470,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           size="sm"
           onClick={handleConfetti}
           leftIcon={<Sparkles size={14} />}
+          className="font-bold text-xs border bg-white"
         >
           Pháo hoa
         </Button>
@@ -239,8 +479,9 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           size="sm"
           onClick={handleReset}
           leftIcon={<RotateCcw size={14} />}
+          className="font-bold text-xs border bg-white"
         >
-          Làm mới
+          Xoá màn hình
         </Button>
       </div>
 
