@@ -15,16 +15,12 @@ import { Button } from '@/components/common/Button'
 import {
   FileSpreadsheet,
   FileText,
-  Lock,
   KeyRound,
   Eye,
   EyeOff,
   CheckCircle2,
   AlertCircle,
   UserCheck,
-  BookOpen,
-  Sparkles,
-  Layers,
 } from 'lucide-react'
 
 const TEACHING_SUBJECT_OPTIONS = [

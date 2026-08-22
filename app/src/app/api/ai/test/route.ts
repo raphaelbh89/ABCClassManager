@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
 
 const GEMINI_MODELS_TO_TRY = [
+  { version: 'v1beta', model: 'gemini-3.5-flash' },
+  { version: 'v1beta', model: 'gemini-3.7-flash' },
+  { version: 'v1beta', model: 'gemini-3.6-flash' },
+  { version: 'v1beta', model: 'gemini-3.5-flash-lite' },
+  { version: 'v1beta', model: 'gemini-flash-latest' },
+  { version: 'v1',     model: 'gemini-3.5-flash' },
+  { version: 'v1beta', model: 'gemini-2.5-flash' },
   { version: 'v1beta', model: 'gemini-1.5-flash' },
-  { version: 'v1beta', model: 'gemini-2.0-flash' },
-  { version: 'v1beta', model: 'gemini-2.0-flash-exp' },
-  { version: 'v1',     model: 'gemini-1.5-flash' },
-  { version: 'v1beta', model: 'gemini-1.5-pro' },
-  { version: 'v1beta', model: 'gemini-pro' },
 ]
 
 const GROQ_MODELS_TO_TRY = [
@@ -29,7 +31,7 @@ export async function POST(req: Request) {
 
     const testPrompt = 'Hi! Please reply with 3 words.'
 
-    // 1. Google Gemini (Tự động thử các model và version khác nhau)
+    // 1. Google Gemini (Tự động thử các model thế hệ mới nhất 3.5 / 3.7 / flash-latest)
     if (provider === 'gemini') {
       const cleanKey = apiKey.trim()
       const start = Date.now()
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
           if (res.ok) {
             const data = await res.json()
             replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'OK'
-            successfulModel = `${item.model} (${item.version})`
+            successfulModel = `${item.model}`
             break
           } else {
             const errText = await res.text()

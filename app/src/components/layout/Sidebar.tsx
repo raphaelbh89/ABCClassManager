@@ -5,8 +5,8 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/utils/cn'
 import {
   LayoutDashboard, Users, ClipboardCheck,
-  Gamepad2, BookOpen, Settings, GraduationCap,
-  Tv, Smartphone, Trophy, Flame
+  Gamepad2, Settings, GraduationCap,
+  Tv, Smartphone, Trophy
 } from 'lucide-react'
 
 const navItems = [

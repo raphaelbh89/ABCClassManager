@@ -76,12 +76,14 @@ Hãy tạo câu hỏi thú vị, chuẩn kiến thức môn ${subject}, nội du
   // ─── 1. GOOGLE GEMINI API (MIỄN PHÍ 100%) ───
   if (provider === 'gemini' && cleanKey.length > 5) {
     const modelsToTry = [
+      { version: 'v1beta', model: 'gemini-3.5-flash' },
+      { version: 'v1beta', model: 'gemini-3.7-flash' },
+      { version: 'v1beta', model: 'gemini-3.6-flash' },
+      { version: 'v1beta', model: 'gemini-3.5-flash-lite' },
+      { version: 'v1beta', model: 'gemini-flash-latest' },
+      { version: 'v1',     model: 'gemini-3.5-flash' },
+      { version: 'v1beta', model: 'gemini-2.5-flash' },
       { version: 'v1beta', model: 'gemini-1.5-flash' },
-      { version: 'v1beta', model: 'gemini-2.0-flash' },
-      { version: 'v1beta', model: 'gemini-2.0-flash-exp' },
-      { version: 'v1',     model: 'gemini-1.5-flash' },
-      { version: 'v1beta', model: 'gemini-1.5-pro' },
-      { version: 'v1beta', model: 'gemini-pro' },
     ]
 
     for (const item of modelsToTry) {

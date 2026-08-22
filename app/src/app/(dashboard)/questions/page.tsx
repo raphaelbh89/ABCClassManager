@@ -16,14 +16,8 @@ import {
   Trash2,
   CheckCircle2,
   Sparkles,
-  Layers,
-  HelpCircle,
-  FolderOpen,
   Tag,
-  Zap,
   Activity,
-  AlertTriangle,
-  Server,
 } from 'lucide-react'
 import type { Question, QuestionType } from '@/types'
 
