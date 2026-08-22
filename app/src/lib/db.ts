@@ -108,6 +108,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     teacher_id TEXT,
     subject TEXT,
+    topic TEXT,
     content TEXT NOT NULL,
     question_type TEXT NOT NULL,
     options TEXT, -- JSON
@@ -130,6 +131,11 @@ db.exec(`
     FOREIGN KEY(class_id) REFERENCES classes(id) ON DELETE CASCADE
   );
 `)
+
+// Đảm bảo migration cho cột topic nếu database cũ chưa có
+try {
+  db.exec('ALTER TABLE questions ADD COLUMN topic TEXT;')
+} catch {}
 
 // Khởi tạo dữ liệu mẫu ban đầu nếu database còn trống
 const teacherCount = db.prepare('SELECT count(*) as count FROM teachers').get() as { count: number }

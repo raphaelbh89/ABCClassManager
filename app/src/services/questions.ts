@@ -15,6 +15,7 @@ export async function getQuestions(subject?: string): Promise<Question[]> {
 
 export async function createQuestion(params: {
   subject?: string
+  topic?: string
   content: string
   question_type: QuestionType
   options: { label: string; text: string }[]
@@ -32,7 +33,7 @@ export async function createQuestion(params: {
 
 export async function updateQuestion(
   id: string,
-  params: Partial<Pick<Question, 'content' | 'question_type' | 'options' | 'correct_answer' | 'duration_seconds' | 'subject'>>
+  params: Partial<Pick<Question, 'content' | 'question_type' | 'options' | 'correct_answer' | 'duration_seconds' | 'subject' | 'topic'>>
 ): Promise<Question> {
   const res = await fetch('/api/questions', {
     method: 'PUT',

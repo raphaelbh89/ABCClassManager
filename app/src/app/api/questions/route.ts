@@ -7,14 +7,15 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const subject = searchParams.get('subject')
     const type = searchParams.get('type')
+    const topic = searchParams.get('topic')
 
     let query = 'SELECT * FROM questions WHERE is_active = 1'
-    let params: any[] = []
+    const params: any[] = []
 
     if (subject && subject !== 'all') {
       if (subject === 'Tiếng Anh') {
-        query += ' AND (subject = ? OR subject = ?)'
-        params.push('Tiếng Anh', 'Toán Tiếng Anh')
+        query += ' AND (subject = ? OR subject = ? OR subject = ?)'
+        params.push('Tiếng Anh', 'Toán Tiếng Anh', 'Khoa học Tiếng Anh')
       } else {
         query += ' AND subject = ?'
         params.push(subject)
@@ -24,6 +25,11 @@ export async function GET(req: Request) {
     if (type && type !== 'all') {
       query += ' AND question_type = ?'
       params.push(type)
+    }
+
+    if (topic && topic !== 'all') {
+      query += ' AND topic = ?'
+      params.push(topic)
     }
 
     query += ' ORDER BY created_at DESC'
@@ -46,30 +52,41 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { action } = body
 
-    // ─── Tạo tự động bộ câu hỏi theo Chủ đề / AI Prompt (Gemini Free, ChatGPT, Groq) ───
+    // ─── Tạo tự động bộ câu hỏi theo Chủ đề / AI Prompt (Gemini Free, ChatGPT, Groq, Custom) ───
     if (action === 'generate_set' || action === 'ai_generate') {
       const {
         topic = '',
-        subject = 'Toán học',
+        subject = 'Tiếng Anh',
         count = 5,
         question_type = 'mcq',
-        provider = 'local',
+        provider = 'gemini',
         apiKey = '',
+        customBaseUrl = '',
+        customModel = '',
       } = body
 
       const { generateQuestionsWithAI } = await import('@/services/aiGenerator')
-      const createdQuestions = await generateQuestionsWithAI({
+      const result = await generateQuestionsWithAI({
         topic: topic.trim(),
         subject,
         count: Number(count) || 5,
         question_type,
         provider,
         apiKey,
+        customBaseUrl,
+        customModel,
       })
 
+      // Lấy toàn bộ nội dung câu hỏi đã có trong database để chống lưu lặp lại
+      const existingRows = db.prepare('SELECT LOWER(TRIM(content)) as content FROM questions WHERE is_active = 1').all() as any[]
+      const existingSet = new Set(existingRows.map(r => r.content))
+
+      // Chỉ thêm các câu hỏi chưa từng xuất hiện
+      const uniqueToInsert = result.questions.filter(q => !existingSet.has(q.content.trim().toLowerCase()))
+
       const insertStmt = db.prepare(`
-        INSERT INTO questions (id, teacher_id, subject, content, question_type, options, correct_answer, duration_seconds)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO questions (id, teacher_id, subject, topic, content, question_type, options, correct_answer, duration_seconds)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
       const tx = db.transaction((list: any[]) => {
@@ -78,6 +95,7 @@ export async function POST(req: Request) {
             q.id,
             'teacher-1',
             q.subject,
+            topic.trim() || q.topic || 'Tổng hợp',
             q.content,
             q.question_type,
             JSON.stringify(q.options),
@@ -86,14 +104,23 @@ export async function POST(req: Request) {
           )
         }
       })
-      tx(createdQuestions)
+      tx(uniqueToInsert)
 
-      return NextResponse.json({ success: true, count: createdQuestions.length, questions: createdQuestions })
+      return NextResponse.json({
+        success: true,
+        count: uniqueToInsert.length,
+        skippedCount: result.questions.length - uniqueToInsert.length,
+        questions: uniqueToInsert,
+        isAiGenerated: result.isAiGenerated,
+        providerName: result.providerName,
+        usedProvider: result.usedProvider,
+      })
     }
 
     // ─── Tạo 1 câu hỏi đơn lẻ ───
     const {
-      subject = 'Toán học',
+      subject = 'Tiếng Anh',
+      topic = 'Tổng hợp',
       content,
       question_type = 'mcq',
       options,
@@ -103,9 +130,9 @@ export async function POST(req: Request) {
 
     const id = `q-${Date.now()}`
     db.prepare(`
-      INSERT INTO questions (id, teacher_id, subject, content, question_type, options, correct_answer, duration_seconds)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, 'teacher-1', subject, content.trim(), question_type, JSON.stringify(options || []), correct_answer, duration_seconds)
+      INSERT INTO questions (id, teacher_id, subject, topic, content, question_type, options, correct_answer, duration_seconds)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, 'teacher-1', subject, topic.trim(), content.trim(), question_type, JSON.stringify(options || []), correct_answer, duration_seconds)
 
     const created = db.prepare('SELECT * FROM questions WHERE id = ?').get(id) as any
     return NextResponse.json({
@@ -121,13 +148,13 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const body = await req.json()
-    const { id, subject, content, question_type, options, correct_answer, duration_seconds } = body
+    const { id, subject, topic = 'Tổng hợp', content, question_type, options, correct_answer, duration_seconds } = body
 
     db.prepare(`
       UPDATE questions
-      SET subject = ?, content = ?, question_type = ?, options = ?, correct_answer = ?, duration_seconds = ?
+      SET subject = ?, topic = ?, content = ?, question_type = ?, options = ?, correct_answer = ?, duration_seconds = ?
       WHERE id = ?
-    `).run(subject, content.trim(), question_type, JSON.stringify(options || []), correct_answer, duration_seconds, id)
+    `).run(subject, topic.trim(), content.trim(), question_type, JSON.stringify(options || []), correct_answer, duration_seconds, id)
 
     const updated = db.prepare('SELECT * FROM questions WHERE id = ?').get(id) as any
     return NextResponse.json({

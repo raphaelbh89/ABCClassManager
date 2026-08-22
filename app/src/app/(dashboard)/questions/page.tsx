@@ -1,6 +1,7 @@
 'use client'
 // src/app/(dashboard)/questions/page.tsx
-import { useState } from 'react'
+// Ngân hàng Câu hỏi: Tích hợp Custom AI API (Gemini, ChatGPT, Groq, Custom), Test API Key, Chống lặp câu hỏi
+import { useState, useMemo } from 'react'
 import { useQuestions } from '@/hooks/useQuestions'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
@@ -17,20 +18,28 @@ import {
   Sparkles,
   Layers,
   HelpCircle,
+  FolderOpen,
+  Tag,
+  Zap,
+  Activity,
+  AlertTriangle,
+  Server,
 } from 'lucide-react'
 import type { Question, QuestionType } from '@/types'
 
 const SUBJECTS = [
-  { id: 'all', name: 'Tất cả môn' },
-  { id: 'Toán học', name: '📐 Toán học' },
-  { id: 'Tiếng Việt', name: '📖 Tiếng Việt' },
-  { id: 'Tự nhiên & Xã hội', name: '🌍 Tự nhiên & Xã hội' },
+  { id: 'all', name: '🌐 Tất cả môn' },
   { id: 'Tiếng Anh', name: '🔤 Tiếng Anh' },
   { id: 'Toán Tiếng Anh', name: '📐 Toán Tiếng Anh' },
+  { id: 'Khoa học Tiếng Anh', name: '🔬 Khoa học Tiếng Anh' },
+  { id: 'Tiếng Việt', name: '📖 Tiếng Việt' },
+  { id: 'Toán học', name: '📐 Toán học' },
+  { id: 'Tự nhiên & Xã hội', name: '🌍 Tự nhiên & Xã hội' },
 ]
 
 export default function QuestionsPage() {
   const [selectedSubject, setSelectedSubject] = useState('all')
+  const [selectedTopic, setSelectedTopic] = useState('all')
   const { questions, isLoading, addQuestion, editQuestion, removeQuestion, refetch } = useQuestions(selectedSubject)
 
   // Modals
@@ -44,7 +53,8 @@ export default function QuestionsPage() {
 
   // Form states cho tạo 1 câu
   const [qType, setQType] = useState<QuestionType>('mcq')
-  const [subject, setSubject] = useState('Toán học')
+  const [subject, setSubject] = useState('Tiếng Anh')
+  const [topic, setTopic] = useState('Đại từ xưng hô (Pronouns)')
   const [content, setContent] = useState('')
   const [optA, setOptA] = useState('')
   const [optB, setOptB] = useState('')
@@ -55,14 +65,20 @@ export default function QuestionsPage() {
   const [formLoading, setFormLoading] = useState(false)
 
   // Form states cho sinh bộ câu hỏi tự động bằng AI
-  const [genTopic, setGenTopic] = useState('')
-  const [genSubject, setGenSubject] = useState('Toán học')
+  const [genTopic, setGenTopic] = useState('các loại phương tiện')
+  const [genSubject, setGenSubject] = useState('Tiếng Anh')
   const [genCount, setGenCount] = useState(5)
   const [genType, setGenType] = useState<'mcq' | 'true_false' | 'all'>('mcq')
-  const [aiProvider, setAiProvider] = useState<'gemini' | 'openai' | 'groq' | 'local'>('gemini')
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'openai' | 'groq' | 'custom'>('gemini')
   const [apiKey, setApiKey] = useState('')
+  const [customBaseUrl, setCustomBaseUrl] = useState('')
+  const [customModel, setCustomModel] = useState('')
   const [showKeySetting, setShowKeySetting] = useState(false)
   const [genLoading, setGenLoading] = useState(false)
+
+  // Test Key State
+  const [testLoading, setTestLoading] = useState(false)
+  const [testResult, setTestResult] = useState<{ success?: boolean; message?: string; error?: string } | null>(null)
 
   // Load API Key & Provider từ localStorage
   useState(() => {
@@ -70,24 +86,78 @@ export default function QuestionsPage() {
       try {
         const savedKey = localStorage.getItem('classmanager_ai_key') || ''
         const savedProvider = (localStorage.getItem('classmanager_ai_provider') as any) || 'gemini'
+        const savedBaseUrl = localStorage.getItem('classmanager_ai_base_url') || ''
+        const savedModel = localStorage.getItem('classmanager_ai_model') || ''
         if (savedKey) setApiKey(savedKey)
         if (savedProvider) setAiProvider(savedProvider)
+        if (savedBaseUrl) setCustomBaseUrl(savedBaseUrl)
+        if (savedModel) setCustomModel(savedModel)
       } catch {}
     }
   })
 
-  const handleSaveApiKey = (key: string, provider: 'gemini' | 'openai' | 'groq' | 'local') => {
+  const handleSaveApiKey = (key: string, provider: 'gemini' | 'openai' | 'groq' | 'custom', baseUrl = customBaseUrl, model = customModel) => {
     setApiKey(key)
     setAiProvider(provider)
+    setCustomBaseUrl(baseUrl)
+    setCustomModel(model)
+    setTestResult(null)
     try {
       localStorage.setItem('classmanager_ai_key', key)
       localStorage.setItem('classmanager_ai_provider', provider)
+      localStorage.setItem('classmanager_ai_base_url', baseUrl)
+      localStorage.setItem('classmanager_ai_model', model)
     } catch {}
   }
+
+  // Kiểm tra kết nối API Key
+  const handleTestApiKey = async () => {
+    setTestLoading(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/ai/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: aiProvider,
+          apiKey: apiKey.trim(),
+          customBaseUrl: customBaseUrl.trim(),
+          customModel: customModel.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setTestResult({ success: true, message: `✓ ${data.message} (${data.latency})` })
+      } else {
+        setTestResult({ success: false, error: `✕ ${data.error || 'Kiểm tra thất bại.'}` })
+      }
+    } catch (err: any) {
+      setTestResult({ success: false, error: `✕ Lỗi kết nối: ${err.message}` })
+    } finally {
+      setTestLoading(false)
+    }
+  }
+
+  // Danh sách Topics trích xuất từ câu hỏi hiện có
+  const availableTopics = useMemo(() => {
+    const topicMap = new Map<string, number>()
+    questions.forEach(q => {
+      const t = q.topic || q.subject || 'Tổng hợp'
+      topicMap.set(t, (topicMap.get(t) || 0) + 1)
+    })
+    return Array.from(topicMap.entries()).map(([name, count]) => ({ name, count }))
+  }, [questions])
+
+  // Lọc theo Topic
+  const filteredQuestions = useMemo(() => {
+    if (selectedTopic === 'all') return questions
+    return questions.filter(q => (q.topic || q.subject || 'Tổng hợp') === selectedTopic)
+  }, [questions, selectedTopic])
 
   const resetForm = () => {
     setQType('mcq')
     setContent('')
+    setTopic('Đại từ xưng hô (Pronouns)')
     setOptA('')
     setOptB('')
     setOptC('')
@@ -110,7 +180,8 @@ export default function QuestionsPage() {
   const openEdit = (q: Question) => {
     setEditTarget(q)
     setQType(q.question_type || 'mcq')
-    setSubject(q.subject || 'Toán học')
+    setSubject(q.subject || 'Tiếng Anh')
+    setTopic(q.topic || 'Tổng hợp')
     setContent(q.content)
     setOptA(q.options?.[0]?.text || '')
     setOptB(q.options?.[1]?.text || '')
@@ -127,8 +198,8 @@ export default function QuestionsPage() {
     try {
       const options = qType === 'true_false'
         ? [
-            { label: 'A', text: optA || 'ĐÚNG (Thẻ Xanh Lá)' },
-            { label: 'B', text: optB || 'SAI (Thẻ Đỏ)' },
+            { label: 'A', text: optA || 'TRUE (Đúng / Thẻ Xanh)' },
+            { label: 'B', text: optB || 'FALSE (Sai / Thẻ Đỏ)' },
           ]
         : [
             { label: 'A', text: optA },
@@ -139,6 +210,7 @@ export default function QuestionsPage() {
 
       await addQuestion({
         subject,
+        topic: topic.trim() || 'Tổng hợp',
         content,
         question_type: qType,
         options,
@@ -158,8 +230,8 @@ export default function QuestionsPage() {
     try {
       const options = qType === 'true_false'
         ? [
-            { label: 'A', text: optA || 'ĐÚNG (Thẻ Xanh Lá)' },
-            { label: 'B', text: optB || 'SAI (Thẻ Đỏ)' },
+            { label: 'A', text: optA || 'TRUE (Đúng / Thẻ Xanh)' },
+            { label: 'B', text: optB || 'FALSE (Sai / Thẻ Đỏ)' },
           ]
         : [
             { label: 'A', text: optA },
@@ -170,6 +242,7 @@ export default function QuestionsPage() {
 
       await editQuestion(editTarget.id, {
         subject,
+        topic: topic.trim() || 'Tổng hợp',
         content,
         question_type: qType,
         options,
@@ -193,7 +266,7 @@ export default function QuestionsPage() {
     }
   }
 
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'warning' } | null>(null)
 
   // Xử lý tạo tự động bộ câu hỏi qua AI theo Chủ đề
   const handleGenerateSet = async (e: React.FormEvent) => {
@@ -211,13 +284,28 @@ export default function QuestionsPage() {
           question_type: genType,
           provider: aiProvider,
           apiKey: apiKey.trim(),
+          customBaseUrl: customBaseUrl.trim(),
+          customModel: customModel.trim(),
         }),
       })
+
+      const data = await res.json()
       if (res.ok) {
         setGenerateOpen(false)
         await refetch()
-        setToastMessage(`🎉 Đã tạo thành công ${genCount} câu hỏi AI về chủ đề: "${genTopic || genSubject}"!`)
-        setTimeout(() => setToastMessage(null), 4000)
+
+        if (data.isAiGenerated) {
+          setToastMessage({
+            text: `✨ Đã tạo thành công ${data.count} câu hỏi bằng ${data.providerName} về chủ đề "${genTopic}"! (Đã tự động loại bỏ ${data.skippedCount || 0} câu trùng lặp)`,
+            type: 'success',
+          })
+        } else {
+          setToastMessage({
+            text: `⚠️ Đang dùng Bộ mẫu Offline (đã thêm ${data.count} câu). Hãy dán API Key (Gemini/ChatGPT) để AI tự do tạo câu hỏi chính xác theo chủ đề bạn nhập!`,
+            type: 'warning',
+          })
+        }
+        setTimeout(() => setToastMessage(null), 6000)
       }
     } finally {
       setGenLoading(false)
@@ -230,10 +318,10 @@ export default function QuestionsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="font-bold text-2xl" style={{ fontFamily: 'var(--font-heading)' }}>
-            📚 Ngân hàng & Bộ câu hỏi Quiz
+            📚 Ngân hàng Câu hỏi Theo Chủ Đề
           </h1>
           <p className="text-xs text-[var(--color-text-muted)]">
-            Tạo câu hỏi trắc nghiệm A/B/C/D, câu hỏi Đúng/Sai hoặc sinh nhanh bộ đề theo môn học
+            Quản lý câu hỏi Tiếng Anh, Toán & Khoa học bằng Tiếng Anh, phân loại theo từng chủ đề bài học
           </p>
         </div>
         <div className="flex gap-2">
@@ -242,7 +330,7 @@ export default function QuestionsPage() {
             leftIcon={<Sparkles size={16} />}
             onClick={openGenerate}
           >
-            ⚡ Tạo nhanh Bộ câu hỏi
+            ✨ Tạo Bộ câu hỏi bằng AI
           </Button>
           <Button leftIcon={<Plus size={16} />} onClick={openAdd}>
             Thêm câu hỏi
@@ -250,19 +338,30 @@ export default function QuestionsPage() {
         </div>
       </div>
 
+      {/* Toast thông báo nguồn gốc AI */}
       {toastMessage && (
-        <div className="p-3.5 rounded-2xl bg-green-50 border border-green-300 text-green-800 text-xs font-bold flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2 duration-200">
-          <span>{toastMessage}</span>
-          <button onClick={() => setToastMessage(null)} className="text-green-700 hover:text-green-900 font-black">✕</button>
+        <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 duration-200 ${
+          toastMessage.type === 'success'
+            ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+            : 'bg-amber-50 border-amber-300 text-amber-900'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{toastMessage.type === 'success' ? '✨' : '⚠️'}</span>
+            <span>{toastMessage.text}</span>
+          </div>
+          <button onClick={() => setToastMessage(null)} className="font-black px-2 py-1 hover:bg-black/5 rounded-lg">✕</button>
         </div>
       )}
 
-      {/* Tabs môn học */}
+      {/* Tabs Môn học */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         {SUBJECTS.map(s => (
           <button
             key={s.id}
-            onClick={() => setSelectedSubject(s.id)}
+            onClick={() => {
+              setSelectedSubject(s.id)
+              setSelectedTopic('all')
+            }}
             className={`px-4 py-2 rounded-full font-bold text-xs whitespace-nowrap transition-all ${
               selectedSubject === s.id
                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
@@ -274,6 +373,38 @@ export default function QuestionsPage() {
         ))}
       </div>
 
+      {/* Thanh Lọc Theo Chủ Đề (Topic Pills) */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <span className="text-xs font-black text-slate-500 flex items-center gap-1 flex-shrink-0">
+          <Tag size={13} /> Chủ đề:
+        </span>
+        <button
+          onClick={() => setSelectedTopic('all')}
+          className={`px-3 py-1 rounded-xl text-xs font-black whitespace-nowrap border transition-all ${
+            selectedTopic === 'all'
+              ? 'bg-slate-900 text-white border-slate-900'
+              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+          }`}
+        >
+          Tất cả ({questions.length})
+        </button>
+
+        {availableTopics.map(t => (
+          <button
+            key={t.name}
+            onClick={() => setSelectedTopic(t.name)}
+            className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap border transition-all flex items-center gap-1.5 ${
+              selectedTopic === t.name
+                ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                : 'bg-amber-50/60 text-amber-950 border-amber-200 hover:bg-amber-100'
+            }`}
+          >
+            <span>🎯 {t.name}</span>
+            <span className="text-[10px] font-black opacity-80">({t.count})</span>
+          </button>
+        ))}
+      </div>
+
       {/* Danh sách câu hỏi */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -281,32 +412,35 @@ export default function QuestionsPage() {
             <div key={i} className="h-36 rounded-2xl animate-pulse bg-[var(--color-border)]" />
           ))}
         </div>
-      ) : questions.length === 0 ? (
+      ) : filteredQuestions.length === 0 ? (
         <Card padding="lg" className="text-center py-16">
           <BookOpen size={48} className="mx-auto mb-3 text-[var(--color-text-muted)]" />
-          <p className="font-bold text-base mb-1">Chưa có câu hỏi nào</p>
+          <p className="font-bold text-base mb-1">Chưa có câu hỏi nào thuộc chủ đề này</p>
           <p className="text-xs text-[var(--color-text-muted)] mb-4">
-            Bạn có thể tạo câu hỏi thủ công hoặc dùng tính năng "Tạo nhanh Bộ câu hỏi".
+            Bạn có thể tạo câu hỏi thủ công hoặc dùng tính năng "Tạo Bộ câu hỏi bằng AI".
           </p>
           <div className="flex justify-center gap-3">
             <Button variant="secondary" onClick={openGenerate} leftIcon={<Sparkles size={16} />}>
-              Tạo nhanh bộ câu hỏi mẫu
+              Tạo nhanh bằng AI
             </Button>
             <Button onClick={openAdd} leftIcon={<Plus size={16} />}>
-              Tạo câu hỏi thủ công
+              Thêm câu hỏi thủ công
             </Button>
           </div>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {questions.map((q, idx) => (
+          {filteredQuestions.map((q, idx) => (
             <Card key={q.id} padding="md" className="flex flex-col justify-between gap-3 border shadow-sm">
               <div>
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="primary">{q.subject || 'Chung'}</Badge>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-200 shadow-2xs">
+                      🎯 {q.topic || q.subject || 'Tổng hợp'}
+                    </span>
+                    <Badge variant="primary">{q.subject || 'Tiếng Anh'}</Badge>
                     <Badge variant={q.question_type === 'true_false' ? 'secondary' : 'neutral'}>
-                      {q.question_type === 'true_false' ? 'Đúng / Sai' : 'Trắc nghiệm ABCD'}
+                      {q.question_type === 'true_false' ? 'Đúng / Sai' : 'Trắc nghiệm'}
                     </Badge>
                   </div>
                   <span className="flex items-center gap-1 text-[11px] font-semibold text-[var(--color-text-muted)]">
@@ -318,45 +452,53 @@ export default function QuestionsPage() {
                 </h3>
 
                 {/* Các phương án */}
-                <div className={`grid gap-2 text-xs ${q.question_type === 'true_false' ? 'grid-cols-2' : 'grid-cols-2'}`}>
+                <div className="grid grid-cols-2 gap-2">
                   {(q.options || []).map((opt: any) => {
-                    const isCorrect = q.correct_answer === opt.label
+                    const isCorrect = opt.label === q.correct_answer
                     return (
                       <div
                         key={opt.label}
-                        className={`p-2.5 rounded-xl border font-bold flex items-center justify-between ${
+                        className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${
                           isCorrect
-                            ? 'bg-green-50 border-green-300 text-green-800 ring-1 ring-green-400'
-                            : 'bg-slate-50 border-[var(--color-border)] text-[var(--color-text-muted)]'
+                            ? 'bg-green-50 border-green-400 text-green-800 ring-1 ring-green-400 font-bold'
+                            : 'bg-white border-slate-200 text-slate-700'
                         }`}
                       >
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="px-1.5 py-0.5 rounded bg-black/10 text-[10px]">{opt.label}</span>
-                          <span className="truncate">{opt.text}</span>
-                        </div>
-                        {isCorrect && <CheckCircle2 size={14} className="text-green-600 flex-shrink-0" />}
+                        <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black ${
+                          isCorrect ? 'bg-green-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          {opt.label}
+                        </span>
+                        <span className="truncate flex-1">{opt.text}</span>
+                        {isCorrect && <CheckCircle2 size={13} className="text-green-600 flex-shrink-0" />}
                       </div>
                     )
                   })}
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex justify-end gap-1 pt-2 border-t border-[var(--color-border)]">
-                <button
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<Pencil size={14} />}
                   onClick={() => openEdit(q)}
-                  className="p-1.5 rounded-lg text-[var(--color-primary)] hover:bg-[var(--color-surface-alt)]"
-                  title="Sửa câu hỏi"
                 >
-                  <Pencil size={15} />
-                </button>
-                <button
-                  onClick={() => { setDeleteTarget(q); setDeleteOpen(true) }}
-                  className="p-1.5 rounded-lg text-[var(--color-danger)] hover:bg-red-50"
-                  title="Xoá câu hỏi"
+                  Sửa
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<Trash2 size={14} />}
+                  onClick={() => {
+                    setDeleteTarget(q)
+                    setDeleteOpen(true)
+                  }}
+                  className="text-red-500 hover:bg-red-50"
                 >
-                  <Trash2 size={15} />
-                </button>
+                  Xoá
+                </Button>
               </div>
             </Card>
           ))}
@@ -385,8 +527,8 @@ export default function QuestionsPage() {
                 type="button"
                 onClick={() => {
                   setQType('true_false')
-                  if (!optA) setOptA('ĐÚNG (Thẻ Xanh Lá)')
-                  if (!optB) setOptB('SAI (Thẻ Đỏ)')
+                  if (!optA) setOptA('TRUE (Đúng / Thẻ Xanh)')
+                  if (!optB) setOptB('FALSE (Sai / Thẻ Đỏ)')
                 }}
                 className={`p-2.5 rounded-xl border text-xs font-bold transition-all ${
                   qType === 'true_false'
@@ -413,18 +555,17 @@ export default function QuestionsPage() {
                 ))}
               </select>
             </div>
+
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-[var(--color-text)]">Thời gian đếm ngược</label>
-              <select
-                value={duration}
-                onChange={e => setDuration(+e.target.value)}
+              <label className="text-xs font-semibold text-[var(--color-text)]">Chủ đề bài học</label>
+              <input
+                type="text"
+                value={topic}
+                onChange={e => setTopic(e.target.value)}
+                placeholder="VD: Đại từ xưng hô, Động vật, Phương tiện..."
                 className="p-2.5 rounded-lg border bg-white text-sm"
                 style={{ borderColor: 'var(--color-border)' }}
-              >
-                {[10, 15, 20, 30, 45, 60].map(sec => (
-                  <option key={sec} value={sec}>{sec} giây</option>
-                ))}
-              </select>
+              />
             </div>
           </div>
 
@@ -448,10 +589,10 @@ export default function QuestionsPage() {
                 4 Phương án lựa chọn (Click vào chữ cái để chọn Đáp Án Đúng)
               </label>
               {[
-                { label: 'A', val: optA, set: setOptA, placeholder: 'VD: 25' },
-                { label: 'B', val: optB, set: setOptB, placeholder: 'VD: 30' },
-                { label: 'C', val: optC, set: setOptC, placeholder: 'VD: 35' },
-                { label: 'D', val: optD, set: setOptD, placeholder: 'VD: 40' },
+                { label: 'A', val: optA, set: setOptA, placeholder: 'Phương án A' },
+                { label: 'B', val: optB, set: setOptB, placeholder: 'Phương án B' },
+                { label: 'C', val: optC, set: setOptC, placeholder: 'Phương án C' },
+                { label: 'D', val: optD, set: setOptD, placeholder: 'Phương án D' },
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-2">
                   <button
@@ -481,38 +622,38 @@ export default function QuestionsPage() {
           ) : (
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-[var(--color-text)]">
-                Đáp án Đúng / Sai (Click để chọn đáp án đúng)
+                Đáp án Đúng/Sai (Click vào chữ cái để chọn Đúng)
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCorrectAnswer('A')}
-                  className={`p-3 rounded-xl border-2 font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                    correctAnswer === 'A'
-                      ? 'border-green-500 bg-green-50 text-green-700 ring-2 ring-green-400'
-                      : 'border-slate-200 bg-white text-slate-600'
-                  }`}
-                >
-                  <span>🟢</span>
-                  <span>ĐÚNG (Thẻ Xanh)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCorrectAnswer('B')}
-                  className={`p-3 rounded-xl border-2 font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-                    correctAnswer === 'B'
-                      ? 'border-red-500 bg-red-50 text-red-700 ring-2 ring-red-400'
-                      : 'border-slate-200 bg-white text-slate-600'
-                  }`}
-                >
-                  <span>🔴</span>
-                  <span>SAI (Thẻ Đỏ)</span>
-                </button>
-              </div>
+              {[
+                { label: 'A', val: optA, set: setOptA, def: 'TRUE (Đúng / Thẻ Xanh)' },
+                { label: 'B', val: optB, set: setOptB, def: 'FALSE (Sai / Thẻ Đỏ)' },
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCorrectAnswer(item.label)}
+                    className={`w-9 h-9 rounded-lg font-black text-sm flex items-center justify-center border transition-all ${
+                      correctAnswer === item.label
+                        ? 'bg-[var(--color-primary)] text-white ring-2 ring-offset-1 ring-[var(--color-primary)]'
+                        : 'bg-slate-100 text-[var(--color-text-muted)] border-[var(--color-border)]'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                  <input
+                    type="text"
+                    value={item.val || item.def}
+                    onChange={e => item.set(e.target.value)}
+                    required
+                    className="flex-1 p-2 rounded-lg border text-sm"
+                    style={{ borderColor: 'var(--color-border)' }}
+                  />
+                </div>
+              ))}
             </div>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
             <Button type="button" variant="ghost" onClick={() => { setAddOpen(false); setEditOpen(false) }}>
               Huỷ
             </Button>
@@ -530,17 +671,17 @@ export default function QuestionsPage() {
           <div className="flex flex-col gap-1.5 p-3.5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 rounded-2xl border border-amber-200">
             <label className="text-xs font-black text-amber-950 flex items-center justify-between">
               <span>🎯 CHỦ ĐỀ HOẶC BÀI HỌC CỤ THỂ</span>
-              <span className="text-[10px] font-bold text-amber-700">Tùy biến theo giáo án</span>
+              <span className="text-[10px] font-bold text-amber-700">Tùy biến không giới hạn</span>
             </label>
             <input
               type="text"
               value={genTopic}
               onChange={e => setGenTopic(e.target.value)}
-              placeholder="VD: Bảng nhân 7, Từ đồng nghĩa lớp 3, Hệ mặt trời, Animals & Colors..."
+              placeholder="VD: các loại phương tiện, School things, Animals, Weather..."
               className="p-3 rounded-xl border border-amber-300 bg-white text-sm font-semibold text-slate-800 placeholder:text-slate-400 shadow-2xs focus:ring-2 focus:ring-amber-400 focus:outline-none"
             />
             <p className="text-[11px] text-amber-800 leading-snug">
-              Nhập bất kỳ chủ đề bài học nào bạn muốn dạy, AI sẽ tự động tạo câu hỏi chuẩn kiến thức và phân bổ đều đáp án.
+              Nhập bất kỳ chủ đề bài học nào bạn muốn dạy, AI sẽ tự động tạo câu hỏi chuẩn kiến thức và phân bổ đều đáp án (chống trùng lặp 100%).
             </p>
           </div>
 
@@ -553,11 +694,12 @@ export default function QuestionsPage() {
                 className="p-2.5 rounded-xl border bg-white text-xs font-bold text-slate-800"
                 style={{ borderColor: 'var(--color-border)' }}
               >
-                <option value="Toán học">📐 Toán học</option>
-                <option value="Tiếng Việt">📖 Tiếng Việt</option>
-                <option value="Tự nhiên & Xã hội">🌍 Tự nhiên & Xã hội</option>
                 <option value="Tiếng Anh">🔤 Tiếng Anh</option>
                 <option value="Toán Tiếng Anh">📐 Toán bằng Tiếng Anh</option>
+                <option value="Khoa học Tiếng Anh">🔬 Khoa học bằng Tiếng Anh</option>
+                <option value="Tiếng Việt">📖 Tiếng Việt</option>
+                <option value="Toán học">📐 Toán học</option>
+                <option value="Tự nhiên & Xã hội">🌍 Tự nhiên & Xã hội</option>
               </select>
             </div>
 
@@ -596,36 +738,43 @@ export default function QuestionsPage() {
             </div>
           </div>
 
-          {/* ─── CẤU HÌNH AI API KEY (GEMINI FREE / CHATGPT / GROQ) ─── */}
-          <div className="border border-slate-200 rounded-2xl p-3 bg-slate-50 flex flex-col gap-2">
+          {/* ─── CẤU HÌNH & TEST API KEY AI (GEMINI FREE / CHATGPT / GROQ / CUSTOM) ─── */}
+          <div className="border border-slate-200 rounded-2xl p-3.5 bg-slate-50 flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => setShowKeySetting(!showKeySetting)}
-                className="text-xs font-bold text-slate-700 flex items-center gap-1.5 hover:text-[var(--color-primary)] cursor-pointer"
+                className="text-xs font-bold text-slate-800 flex items-center gap-1.5 hover:text-[var(--color-primary)] cursor-pointer"
               >
-                <Sparkles size={14} className="text-amber-500" />
-                <span>Cấu hình AI ({aiProvider === 'gemini' ? 'Google Gemini Free' : aiProvider === 'openai' ? 'OpenAI ChatGPT' : aiProvider === 'groq' ? 'Groq Free' : 'Tự động'})</span>
-                <span className="text-[10px] text-slate-400">[{showKeySetting ? 'Thu gọn' : 'Chỉnh sửa'}]</span>
+                <Sparkles size={15} className="text-amber-500" />
+                <span>Cấu hình AI ({aiProvider === 'gemini' ? 'Google Gemini Free' : aiProvider === 'openai' ? 'OpenAI ChatGPT' : aiProvider === 'groq' ? 'Groq Llama 3.3 Free' : 'Custom Endpoint'})</span>
+                <span className="text-[10px] text-slate-400 font-normal">[{showKeySetting ? 'Thu gọn' : 'Chỉnh sửa Key'}]</span>
               </button>
+
+              {apiKey.trim().length > 5 && !showKeySetting && (
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                  <CheckCircle2 size={11} /> Đã có Key
+                </span>
+              )}
             </div>
 
             {showKeySetting && (
-              <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 animate-in fade-in duration-150">
-                <div className="grid grid-cols-3 gap-1.5">
+              <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-200 animate-in fade-in duration-150">
+                <div className="grid grid-cols-4 gap-1.5">
                   {[
                     { id: 'gemini', label: '🌟 Gemini (Free)' },
                     { id: 'openai', label: '🤖 ChatGPT' },
                     { id: 'groq', label: '⚡ Groq (Free)' },
+                    { id: 'custom', label: '🛠️ Custom' },
                   ].map(p => (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => handleSaveApiKey(apiKey, p.id as any)}
-                      className={`p-1.5 rounded-lg border text-[11px] font-bold ${
+                      className={`p-1.5 rounded-lg border text-[10px] font-bold ${
                         aiProvider === p.id
                           ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-white text-slate-700 border-slate-200'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       {p.label}
@@ -633,20 +782,60 @@ export default function QuestionsPage() {
                   ))}
                 </div>
 
-                <div className="flex flex-col gap-1">
+                {aiProvider === 'custom' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={customBaseUrl}
+                      onChange={e => handleSaveApiKey(apiKey, 'custom', e.target.value, customModel)}
+                      placeholder="Base URL: https://api.deepseek.com/v1"
+                      className="p-2 rounded-lg border bg-white text-xs font-mono"
+                    />
+                    <input
+                      type="text"
+                      value={customModel}
+                      onChange={e => handleSaveApiKey(apiKey, 'custom', customBaseUrl, e.target.value)}
+                      placeholder="Model: deepseek-chat"
+                      className="p-2 rounded-lg border bg-white text-xs font-mono"
+                    />
+                  </div>
+                )}
+
+                <div className="flex gap-2 items-center">
                   <input
                     type="password"
                     value={apiKey}
                     onChange={e => handleSaveApiKey(e.target.value, aiProvider)}
-                    placeholder={`Dán ${aiProvider === 'gemini' ? 'Gemini API Key (AIza...)' : aiProvider === 'openai' ? 'OpenAI API Key (sk-...)' : 'Groq API Key (gsk_...)'}`}
-                    className="p-2 rounded-lg border bg-white text-xs font-mono"
+                    placeholder={`Dán ${aiProvider === 'gemini' ? 'Gemini API Key (AIza...)' : aiProvider === 'openai' ? 'OpenAI API Key (sk-...)' : aiProvider === 'groq' ? 'Groq Key (gsk_...)' : 'Custom API Key'}`}
+                    className="flex-1 p-2 rounded-lg border bg-white text-xs font-mono"
                   />
-                  <span className="text-[10px] text-slate-500 leading-snug">
-                    {aiProvider === 'gemini' && '🎁 Lấy Key Gemini miễn phí 100% tại: aistudio.google.com (15 lượt/phút)'}
-                    {aiProvider === 'openai' && '🔑 Dùng tài khoản OpenAI ChatGPT API (gpt-4o-mini)'}
-                    {aiProvider === 'groq' && '⚡ Lấy Key Groq miễn phí 100% tại: console.groq.com (Llama 3.3 siêu nhanh)'}
-                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleTestApiKey}
+                    disabled={testLoading || !apiKey.trim()}
+                    leftIcon={<Activity size={13} className={testLoading ? 'animate-spin' : ''} />}
+                    className="text-xs font-bold flex-shrink-0"
+                  >
+                    {testLoading ? 'Đang test...' : 'Test Key'}
+                  </Button>
                 </div>
+
+                {testResult && (
+                  <div className={`p-2 rounded-lg text-[11px] font-bold ${
+                    testResult.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'
+                  }`}>
+                    {testResult.success ? testResult.message : testResult.error}
+                  </div>
+                )}
+
+                <span className="text-[10px] text-slate-500 leading-snug">
+                  {aiProvider === 'gemini' && '🎁 Lấy Key Gemini miễn phí 100% tại: aistudio.google.com/app/apikey (15 lượt/phút)'}
+                  {aiProvider === 'openai' && '🔑 Dùng tài khoản OpenAI ChatGPT API (gpt-4o-mini)'}
+                  {aiProvider === 'groq' && '⚡ Lấy Key Groq miễn phí 100% tại: console.groq.com/keys (Llama 3.3 siêu nhanh)'}
+                  {aiProvider === 'custom' && '🛠️ Tương thích OpenAI API Format (DeepSeek, OpenRouter, Local Ollama)'}
+                </span>
               </div>
             )}
           </div>

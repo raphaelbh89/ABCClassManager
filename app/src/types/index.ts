@@ -89,6 +89,7 @@ export type Question = {
   id: string
   teacher_id: string
   subject?: string
+  topic?: string
   content: string
   question_type: QuestionType
   options?: { label: string; text: string }[]

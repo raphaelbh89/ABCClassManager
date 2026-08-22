@@ -1,6 +1,7 @@
 'use client'
 // src/app/(dashboard)/game/page.tsx
-import { useState, useEffect } from 'react'
+// Trung tâm Trò chơi Lớp học: Lọc & Chọn theo Bộ Chủ Đề, Setting Môn Giảng Dạy Tiếng Anh/Toán/Khoa học
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useCurrentClass } from '@/context/ClassContext'
@@ -11,17 +12,22 @@ import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { Badge } from '@/components/common/Badge'
 import {
-  Gamepad2,
   Play,
-  Tv,
-  Plus,
-  Sparkles,
   Shuffle,
+  Users,
+  Swords,
+  ShieldAlert,
+  Flame,
+  HelpCircle,
+  Plus,
   Filter,
   CheckCircle2,
-  Swords,
-  Users,
-  Dices,
+  Sparkles,
+  BookOpen,
+  FolderPlus,
+  Settings,
+  Layers,
+  Award,
 } from 'lucide-react'
 import type { GameType } from '@/types'
 
@@ -72,6 +78,14 @@ const GAME_MODES: {
   },
 ]
 
+const TEACHING_SUBJECTS = [
+  { id: 'all_english', name: '🌟 Tất cả Tiếng Anh (Tổng hợp)', subjects: ['Tiếng Anh', 'Toán Tiếng Anh', 'Khoa học Tiếng Anh'] },
+  { id: 'Tiếng Anh', name: '🔤 Tiếng Anh (Language & Grammar)', subjects: ['Tiếng Anh'] },
+  { id: 'Toán Tiếng Anh', name: '📐 Toán Tiếng Anh (Math in English)', subjects: ['Toán Tiếng Anh'] },
+  { id: 'Khoa học Tiếng Anh', name: '🔬 Khoa học Tiếng Anh (Science in English)', subjects: ['Khoa học Tiếng Anh'] },
+  { id: 'all', name: '🌐 Tất cả môn học', subjects: [] },
+]
+
 export default function GameLauncherPage() {
   const router = useRouter()
   const { classes, currentClass, setCurrentClass } = useCurrentClass()
@@ -87,13 +101,30 @@ export default function GameLauncherPage() {
 
   const [selectedMode, setSelectedMode] = useState<GameType>('individual')
   const [selectedQuestions, setSelectedQuestions] = useState<string[]>([])
-  const [filterSubject, setFilterSubject] = useState<string>('all')
+  const [teachingSubject, setTeachingSubject] = useState<string>('all_english')
+  const [filterTopic, setFilterTopic] = useState<string>('all')
   const [filterType, setFilterType] = useState<string>('all')
   const [isLoading, setIsLoading] = useState(false)
 
   // 2 Đấu thủ 1v1
   const [p1Id, setP1Id] = useState<string>('')
   const [p2Id, setP2Id] = useState<string>('')
+
+  // Load Cài đặt Môn Giảng Dạy từ localStorage
+  useEffect(() => {
+    try {
+      const savedSubject = localStorage.getItem('classmanager_teaching_subject')
+      if (savedSubject) setTeachingSubject(savedSubject)
+    } catch {}
+  }, [])
+
+  const handleUpdateTeachingSubject = (subjId: string) => {
+    setTeachingSubject(subjId)
+    setFilterTopic('all')
+    try {
+      localStorage.setItem('classmanager_teaching_subject', subjId)
+    } catch {}
+  }
 
   // Tự động gán 2 học sinh đầu tiên khi có danh sách lớp
   useEffect(() => {
@@ -111,14 +142,34 @@ export default function GameLauncherPage() {
     setP2Id(shuffled[1].id)
   }
 
-  // Danh sách câu hỏi sau khi lọc
-  const filteredQuestions = questions.filter(q => {
-    const matchSubject = filterSubject === 'all' || q.subject === filterSubject
-    const matchType = filterType === 'all' || q.question_type === filterType
-    return matchSubject && matchType
-  })
+  // Lọc câu hỏi theo môn giảng dạy của GV
+  const subjectFilteredQuestions = useMemo(() => {
+    const targetConfig = TEACHING_SUBJECTS.find(s => s.id === teachingSubject)
+    if (!targetConfig || targetConfig.subjects.length === 0) return questions
 
-  // Chọn/bỏ chọn tất cả
+    return questions.filter(q => targetConfig.subjects.includes(q.subject || ''))
+  }, [questions, teachingSubject])
+
+  // Danh sách các Chủ Đề (Topics) trích xuất từ các câu hỏi
+  const availableTopics = useMemo(() => {
+    const topicMap = new Map<string, number>()
+    subjectFilteredQuestions.forEach(q => {
+      const topicName = q.topic || q.subject || 'Tổng hợp'
+      topicMap.set(topicName, (topicMap.get(topicName) || 0) + 1)
+    })
+    return Array.from(topicMap.entries()).map(([name, count]) => ({ name, count }))
+  }, [subjectFilteredQuestions])
+
+  // Danh sách câu hỏi sau khi lọc Môn + Chủ đề + Thể loại
+  const filteredQuestions = useMemo(() => {
+    return subjectFilteredQuestions.filter(q => {
+      const matchTopic = filterTopic === 'all' || (q.topic || q.subject || 'Tổng hợp') === filterTopic
+      const matchType = filterType === 'all' || q.question_type === filterType
+      return matchTopic && matchType
+    })
+  }, [subjectFilteredQuestions, filterTopic, filterType])
+
+  // Chọn/bỏ chọn tất cả trong bộ lọc hiện tại
   const toggleAllQuestions = () => {
     if (selectedQuestions.length === filteredQuestions.length) {
       setSelectedQuestions([])
@@ -131,6 +182,15 @@ export default function GameLauncherPage() {
     setSelectedQuestions(prev =>
       prev.includes(id) ? prev.filter(qId => qId !== id) : [...prev, id]
     )
+  }
+
+  // Chọn nhanh CẢ BỘ THEO CHỦ ĐỀ
+  const handleSelectEntireTopic = (topicName: string) => {
+    setFilterTopic(topicName)
+    const topicQuestions = subjectFilteredQuestions
+      .filter(q => (q.topic || q.subject || 'Tổng hợp') === topicName)
+      .map(q => q.id)
+    setSelectedQuestions(topicQuestions)
   }
 
   // Chọn ngẫu nhiên N câu
@@ -222,20 +282,37 @@ export default function GameLauncherPage() {
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6 pb-12">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="font-bold text-2xl" style={{ fontFamily: 'var(--font-heading)' }}>
-            Trung tâm Trò chơi Lớp học
+            🎮 Trung tâm Trò chơi Lớp học
           </h1>
           <p className="text-xs text-[var(--color-text-muted)]">
-            Tùy biến bộ câu hỏi theo môn, số lượng và thể loại (Trắc nghiệm ABCD hoặc Đúng/Sai)
+            Chọn thể loại, bộ câu hỏi theo chủ đề và bắt đầu tiết học tương tác
           </p>
         </div>
-        <Link href="/questions">
-          <Button variant="ghost" size="sm" leftIcon={<Plus size={15} />}>
-            Quản lý Ngân hàng câu hỏi
-          </Button>
-        </Link>
+
+        <div className="flex items-center gap-2">
+          {/* Cài đặt môn giảng dạy nhanh */}
+          <div className="flex items-center gap-1.5 p-1 bg-white rounded-xl border border-slate-200 shadow-2xs">
+            <span className="text-[11px] font-bold text-slate-500 pl-2">Môn GV:</span>
+            <select
+              value={teachingSubject}
+              onChange={e => handleUpdateTeachingSubject(e.target.value)}
+              className="p-1 text-xs font-black text-[var(--color-primary)] bg-transparent border-0 focus:outline-none cursor-pointer"
+            >
+              {TEACHING_SUBJECTS.map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <Link href="/questions">
+            <Button variant="ghost" size="sm" leftIcon={<Plus size={15} />}>
+              Ngân hàng câu hỏi
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Bước 1: Chọn lớp học */}
@@ -304,26 +381,27 @@ export default function GameLauncherPage() {
           })}
         </div>
 
-        {/* Cấu hình đặc biệt cho 1v1: Chọn 2 học sinh */}
-        {(selectedMode === '1v1' || selectedMode === 'arena') && (
-          <div className="mt-3 p-4 rounded-2xl bg-red-50/60 border border-red-200 flex flex-col gap-3 animate-in fade-in duration-200">
+        {/* Tùy chọn đặc biệt cho chế độ 1v1: Chọn 2 học sinh đối đầu */}
+        {selectedMode === '1v1' && (
+          <div className="mt-2 p-4 rounded-2xl bg-gradient-to-r from-red-50 to-blue-50 border border-red-200 flex flex-col gap-3 animate-in fade-in duration-300">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-black text-red-950">
+              <span className="text-xs font-black text-red-950 flex items-center gap-1.5">
                 <Swords size={16} className="text-red-600" />
-                <span>CHỌN 2 HỌC SINH THI ĐẤU 1 VS 1</span>
-              </div>
+                Chọn 2 Đấu Thủ Cho Trận Đối Kháng 1 vs 1:
+              </span>
               <button
+                type="button"
                 onClick={handleRandomDuelists}
-                className="px-3 py-1 rounded-xl bg-white border border-red-200 text-red-700 text-xs font-bold flex items-center gap-1.5 hover:bg-red-100 transition-colors shadow-2xs"
+                className="text-xs font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-300 shadow-2xs hover:bg-slate-50 flex items-center gap-1 cursor-pointer"
               >
-                <Dices size={14} />
+                <Shuffle size={13} />
                 <span>Chọn ngẫu nhiên 2 bạn</span>
               </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="p-3 bg-white rounded-xl border border-red-200 flex flex-col gap-1.5 shadow-2xs">
-                <span className="text-[11px] font-black text-red-600 uppercase">🔴 Đấu thủ 1 (Bên Trái)</span>
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-bold text-red-800">Đấu thủ 1 (Thanh Máu Đỏ):</label>
                 <select
                   value={p1Id}
                   onChange={e => setP1Id(e.target.value)}
@@ -335,8 +413,8 @@ export default function GameLauncherPage() {
                 </select>
               </div>
 
-              <div className="p-3 bg-white rounded-xl border border-blue-200 flex flex-col gap-1.5 shadow-2xs">
-                <span className="text-[11px] font-black text-blue-600 uppercase">🔵 Đấu thủ 2 (Bên Phải)</span>
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-bold text-blue-800">Đấu thủ 2 (Thanh Máu Xanh):</label>
                 <select
                   value={p2Id}
                   onChange={e => setP2Id(e.target.value)}
@@ -352,7 +430,7 @@ export default function GameLauncherPage() {
         )}
       </Card>
 
-      {/* Bước 3: Tùy biến bộ câu hỏi */}
+      {/* Bước 3: Lọc & Chọn bộ câu hỏi THEO CHỦ ĐỀ */}
       <Card padding="md" className="flex flex-col gap-4 border shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--color-border)] pb-3">
           <div>
@@ -387,38 +465,47 @@ export default function GameLauncherPage() {
           </div>
         </div>
 
-        {/* Bộ lọc Môn học & Thể loại */}
-        <div className="flex flex-wrap gap-3 items-center bg-[var(--color-surface-alt)] p-3 rounded-xl">
-          <div className="flex items-center gap-2">
-            <Filter size={15} className="text-[var(--color-text-muted)]" />
-            <span className="text-xs font-bold text-[var(--color-text)]">Môn học:</span>
-            <select
-              value={filterSubject}
-              onChange={e => setFilterSubject(e.target.value)}
-              className="p-1.5 rounded-lg border bg-white text-xs font-semibold text-[var(--color-text)]"
-              style={{ borderColor: 'var(--color-border)' }}
-            >
-              <option value="all">Tất cả môn</option>
-              <option value="Toán học">Toán học</option>
-              <option value="Tiếng Việt">Tiếng Việt</option>
-              <option value="Tự nhiên & Xã hội">Tự nhiên & Xã hội</option>
-              <option value="Tiếng Anh">Tiếng Anh</option>
-              <option value="Toán Tiếng Anh">Toán Tiếng Anh</option>
-            </select>
-          </div>
+        {/* ─── THANH CHỌN BỘ CÂU HỎI THEO CHỦ ĐỀ (TOPIC TABS) ─── */}
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <Layers size={15} className="text-amber-500" />
+            Chọn Bộ Câu Hỏi Theo Chủ Đề Bài Học:
+          </span>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-[var(--color-text)]">Thể loại:</span>
-            <select
-              value={filterType}
-              onChange={e => setFilterType(e.target.value)}
-              className="p-1.5 rounded-lg border bg-white text-xs font-semibold text-[var(--color-text)]"
-              style={{ borderColor: 'var(--color-border)' }}
+          <div className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5">
+            <button
+              onClick={() => {
+                setFilterTopic('all')
+                setSelectedQuestions([])
+              }}
+              className={`px-3.5 py-2 rounded-xl font-black text-xs whitespace-nowrap transition-all border ${
+                filterTopic === 'all'
+                  ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-sm'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+              }`}
             >
-              <option value="all">Tất cả thể loại</option>
-              <option value="mcq">Trắc nghiệm ABCD</option>
-              <option value="true_false">Đúng / Sai</option>
-            </select>
+              🌐 Tất cả chủ đề ({subjectFilteredQuestions.length})
+            </button>
+
+            {availableTopics.map(t => (
+              <button
+                key={t.name}
+                onClick={() => handleSelectEntireTopic(t.name)}
+                className={`px-3.5 py-2 rounded-xl font-bold text-xs whitespace-nowrap transition-all border flex items-center gap-1.5 ${
+                  filterTopic === t.name
+                    ? 'bg-amber-500 text-white border-amber-600 shadow-sm ring-2 ring-amber-300'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50'
+                }`}
+                title={`Bấm để chọn nhanh toàn bộ ${t.count} câu của chủ đề ${t.name}`}
+              >
+                <span>🎯 {t.name}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  filterTopic === t.name ? 'bg-white/30 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {t.count}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -426,10 +513,10 @@ export default function GameLauncherPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
           {filteredQuestions.length === 0 ? (
             <div className="col-span-2 p-6 text-center text-xs text-[var(--color-text-muted)] bg-white rounded-xl border border-dashed border-[var(--color-border)]">
-              Không tìm thấy câu hỏi phù hợp với bộ lọc. Hãy đổi bộ lọc hoặc tạo thêm câu hỏi mới.
+              Không tìm thấy câu hỏi thuộc chủ đề này. Hãy chọn chủ đề khác hoặc vào Ngân hàng câu hỏi để tạo thêm.
             </div>
           ) : (
-            filteredQuestions.map((q, idx) => {
+            filteredQuestions.map(q => {
               const isChecked = selectedQuestions.length === 0 || selectedQuestions.includes(q.id)
               return (
                 <div
@@ -448,18 +535,18 @@ export default function GameLauncherPage() {
                     className="accent-[var(--color-primary)] rounded mt-0.5"
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-[var(--color-text)] leading-snug mb-1 font-bold">
-                      {idx + 1}. {q.content}
-                    </p>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge variant="neutral">{q.subject || 'Chung'}</Badge>
-                      <Badge variant={q.question_type === 'true_false' ? 'secondary' : 'neutral'}>
-                        {q.question_type === 'true_false' ? 'Đúng / Sai' : 'Trắc nghiệm ABCD'}
-                      </Badge>
-                      <span className="text-[10px] text-[var(--color-text-muted)]">
-                        {q.duration_seconds}s
+                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
+                        {q.topic || q.subject || 'Tổng hợp'}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                        {q.question_type === 'true_false' ? 'Đúng/Sai' : 'Trắc nghiệm'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        (Đáp án: {q.correct_answer})
                       </span>
                     </div>
+                    <p className="line-clamp-2 text-[var(--color-text)] font-bold">{q.content}</p>
                   </div>
                 </div>
               )
@@ -468,24 +555,16 @@ export default function GameLauncherPage() {
         </div>
       </Card>
 
-      {/* Nút Bắt đầu Game */}
-      <div className="bg-white p-4 rounded-2xl border border-[var(--color-border)] shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3 text-xs text-[var(--color-text-muted)]">
-          <span className="p-2 rounded-lg bg-[var(--color-surface-alt)] text-[var(--color-primary)]">
-            <Tv size={18} />
-          </span>
-          <span>
-            Hệ thống sẽ <strong>tự động mở Màn Chiếu TV</strong> trong tab mới và mở <strong>Bộ Điều Khiển Mobile</strong>.
-          </span>
-        </div>
+      {/* Nút Khởi chạy Game */}
+      <div className="flex justify-end pt-2">
         <Button
-          size="xl"
+          size="lg"
           onClick={handleStartGame}
           isLoading={isLoading}
-          leftIcon={<Play size={20} className="fill-current" />}
-          className="w-full sm:w-auto font-bold"
+          leftIcon={<Play size={20} />}
+          className="w-full sm:w-auto font-black px-8 py-4 text-base bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white shadow-lg"
         >
-          Bắt đầu trò chơi ngay
+          Bắt đầu trò chơi ngay ({selectedQuestions.length > 0 ? selectedQuestions.length : filteredQuestions.length} câu)
         </Button>
       </div>
     </div>

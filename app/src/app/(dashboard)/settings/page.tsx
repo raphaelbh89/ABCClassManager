@@ -1,5 +1,6 @@
 'use client'
 // src/app/(dashboard)/settings/page.tsx
+// Cài đặt & Quản lý Hệ thống: Môn Giảng Dạy Tiếng Anh, Cấu hình AI Key, Xuất Báo Cáo & Đổi Mật Khẩu
 import { useState, useEffect } from 'react'
 import { useCurrentClass } from '@/context/ClassContext'
 import { useStudents } from '@/hooks/useStudents'
@@ -21,7 +22,38 @@ import {
   CheckCircle2,
   AlertCircle,
   UserCheck,
+  BookOpen,
+  Sparkles,
+  Layers,
 } from 'lucide-react'
+
+const TEACHING_SUBJECT_OPTIONS = [
+  {
+    id: 'all_english',
+    title: '🌟 Tất cả Tiếng Anh (Khuyên dùng)',
+    desc: 'Bao gồm Tiếng Anh tổng quát, Toán Tiếng Anh (Math) và Khoa học Tiếng Anh (Science)',
+  },
+  {
+    id: 'Tiếng Anh',
+    title: '🔤 Tiếng Anh (Language & Grammar)',
+    desc: 'Chuyên sâu từ vựng, ngữ pháp, đại từ xưng hô, giao tiếp tiếng Anh tiểu học',
+  },
+  {
+    id: 'Toán Tiếng Anh',
+    title: '📐 Toán Tiếng Anh (Math in English)',
+    desc: 'Các phép tính, hình học, số đếm và đơn vị đo lường bằng tiếng Anh',
+  },
+  {
+    id: 'Khoa học Tiếng Anh',
+    title: '🔬 Khoa học Tiếng Anh (Science in English)',
+    desc: 'Vũ trụ, hệ mặt trời, động thực vật và cơ thể người bằng tiếng Anh',
+  },
+  {
+    id: 'all',
+    title: '🌐 Toàn bộ các môn học',
+    desc: 'Hiển thị đầy đủ cả Toán học, Tiếng Việt, Tự nhiên & Xã hội và Tiếng Anh',
+  },
+]
 
 export default function SettingsPage() {
   const { classes, currentClass, setCurrentClass } = useCurrentClass()
@@ -33,6 +65,11 @@ export default function SettingsPage() {
 
   const { students } = useStudents(selectedClassId || null)
   const { sessions } = useAttendance(selectedClassId || null)
+
+  // Cài đặt Môn Giảng Dạy & AI
+  const [teachingSubject, setTeachingSubject] = useState<string>('all_english')
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'openai' | 'groq' | 'local'>('gemini')
+  const [apiKey, setApiKey] = useState('')
 
   // Cài đặt hệ thống
   const [quietMode, setQuietMode] = useState(false)
@@ -57,6 +94,17 @@ export default function SettingsPage() {
         if (data?.user) setCurrentUser(data.user)
       })
       .catch(() => {})
+
+    try {
+      const savedSubject = localStorage.getItem('classmanager_teaching_subject')
+      if (savedSubject) setTeachingSubject(savedSubject)
+
+      const savedAiKey = localStorage.getItem('classmanager_ai_key')
+      if (savedAiKey) setApiKey(savedAiKey)
+
+      const savedAiProvider = localStorage.getItem('classmanager_ai_provider') as any
+      if (savedAiProvider) setAiProvider(savedAiProvider)
+    } catch {}
   }, [])
 
   const activeClass = classes.find(c => c.id === selectedClassId)
@@ -77,6 +125,12 @@ export default function SettingsPage() {
   }
 
   const handleSaveSettings = () => {
+    try {
+      localStorage.setItem('classmanager_teaching_subject', teachingSubject)
+      localStorage.setItem('classmanager_ai_key', apiKey.trim())
+      localStorage.setItem('classmanager_ai_provider', aiProvider)
+    } catch {}
+
     setSavedToast(true)
     setTimeout(() => setSavedToast(false), 2500)
   }
@@ -133,9 +187,105 @@ export default function SettingsPage() {
           ⚙️ Cài đặt & Quản lý Hệ thống
         </h1>
         <p className="text-xs text-[var(--color-text-muted)]">
-          Quản lý tài khoản, đổi mật khẩu, xuất dữ liệu PDF/Excel và cấu hình camera nhận diện
+          Cấu hình môn giảng dạy, API Key AI tạo câu hỏi, tài khoản và hiệu chỉnh nhận diện camera
         </p>
       </div>
+
+      {/* ─── MỤC MỚI: MÔN HỌC GIẢNG DẠY CỦA GIÁO VIÊN ─── */}
+      <Card padding="md" className="flex flex-col gap-4 border shadow-sm bg-gradient-to-br from-amber-50/30 to-white">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shadow-xs">
+              🎓
+            </div>
+            <div>
+              <h2 className="font-black text-base text-[var(--color-text)]">Môn Học Giảng Dạy Của Giáo Viên</h2>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Lựa chọn môn học chính để Trung tâm trò chơi và Ngân hàng câu hỏi ưu tiên hiển thị đúng chuyên môn
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {TEACHING_SUBJECT_OPTIONS.map(opt => {
+            const isSelected = teachingSubject === opt.id
+            return (
+              <div
+                key={opt.id}
+                onClick={() => setTeachingSubject(opt.id)}
+                className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col gap-1 ${
+                  isSelected
+                    ? 'border-amber-500 bg-amber-50/50 shadow-sm ring-2 ring-amber-400/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-sm text-slate-900">{opt.title}</span>
+                  {isSelected && <CheckCircle2 size={16} className="text-amber-600" />}
+                </div>
+                <p className="text-xs text-slate-500 leading-snug">{opt.desc}</p>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
+      {/* ─── MỤC MỚI: CẤU HÌNH AI KEY TẠO CÂU HỎI THEO CHỦ ĐỀ ─── */}
+      <Card padding="md" className="flex flex-col gap-4 border shadow-sm">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-xs">
+              🤖
+            </div>
+            <div>
+              <h2 className="font-black text-base text-[var(--color-text)]">Cấu Hình AI Key (Tạo Bộ Câu Hỏi Theo Chủ Đề)</h2>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Hỗ trợ Google Gemini Miễn Phí (Khuyên dùng), Groq Miễn Phí hoặc OpenAI ChatGPT
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: 'gemini', label: '🌟 Google Gemini (Miễn phí 100%)' },
+              { id: 'openai', label: '🤖 OpenAI ChatGPT' },
+              { id: 'groq', label: '⚡ Groq Llama 3.3 (Miễn phí)' },
+            ].map(p => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setAiProvider(p.id as any)}
+                className={`p-2.5 rounded-xl border text-xs font-black transition-all ${
+                  aiProvider === p.id
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-slate-700">Dán API Key của bạn:</label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder={`Dán ${aiProvider === 'gemini' ? 'Gemini API Key (AIza...)' : aiProvider === 'openai' ? 'OpenAI API Key (sk-...)' : 'Groq API Key (gsk_...)'}`}
+              className="p-3 rounded-xl border border-slate-300 bg-white text-xs font-mono"
+            />
+            <span className="text-xs text-slate-500 leading-relaxed mt-0.5">
+              {aiProvider === 'gemini' && '🎁 Lấy Key Google Gemini miễn phí 100% tại: aistudio.google.com (15 yêu cầu/phút)'}
+              {aiProvider === 'openai' && '🔑 Dùng tài khoản OpenAI ChatGPT API (mô hình gpt-4o-mini)'}
+              {aiProvider === 'groq' && '⚡ Lấy Key Groq miễn phí 100% tại: console.groq.com (Llama 3.3 siêu nhanh)'}
+            </span>
+          </div>
+        </div>
+      </Card>
 
       {/* Mục 1: Đổi mật khẩu & Tài khoản Giáo viên */}
       <Card padding="md" className="flex flex-col gap-4 border shadow-sm">
@@ -162,25 +312,23 @@ export default function SettingsPage() {
         )}
 
         {pwError && (
-          <div className="p-3 rounded-xl bg-red-50 border border-red-300 text-red-700 text-xs font-bold flex items-center gap-2">
+          <div className="p-3 rounded-xl bg-red-50 border border-red-300 text-red-800 text-xs font-bold flex items-center gap-2">
             <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
             <span>{pwError}</span>
           </div>
         )}
 
-        <form onSubmit={handleChangePassword} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+        <form onSubmit={handleChangePassword} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1">
-              <KeyRound size={13} /> Mật khẩu hiện tại
-            </label>
+            <label className="text-xs font-semibold text-[var(--color-text)]">Mật khẩu hiện tại</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={currentPassword}
                 onChange={e => setCurrentPassword(e.target.value)}
-                placeholder="Nhập mật khẩu cũ..."
+                placeholder="Nhập mật khẩu cũ"
                 required
-                className="w-full p-2.5 rounded-lg border bg-white text-xs font-semibold pr-8"
+                className="w-full p-2.5 rounded-lg border text-sm pr-9"
                 style={{ borderColor: 'var(--color-border)' }}
               />
               <button
@@ -188,115 +336,111 @@ export default function SettingsPage() {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
-                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-bold text-[var(--color-text)] flex items-center gap-1">
-              <Lock size={13} /> Mật khẩu mới
-            </label>
+            <label className="text-xs font-semibold text-[var(--color-text)]">Mật khẩu mới</label>
             <input
               type={showPassword ? 'text' : 'password'}
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
-              placeholder="Tối thiểu 6 ký tự..."
+              placeholder="Tối thiểu 6 ký tự"
               required
-              className="w-full p-2.5 rounded-lg border bg-white text-xs font-semibold"
+              className="w-full p-2.5 rounded-lg border text-sm"
               style={{ borderColor: 'var(--color-border)' }}
             />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-bold text-[var(--color-text)]">
-              Xác nhận mật khẩu mới
-            </label>
+            <label className="text-xs font-semibold text-[var(--color-text)]">Xác nhận mật khẩu</label>
             <div className="flex gap-2">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
-                placeholder="Nhập lại mật khẩu..."
+                placeholder="Nhập lại mật khẩu mới"
                 required
-                className="w-full p-2.5 rounded-lg border bg-white text-xs font-semibold"
+                className="w-full p-2.5 rounded-lg border text-sm"
                 style={{ borderColor: 'var(--color-border)' }}
               />
-              <Button type="submit" isLoading={pwLoading} className="whitespace-nowrap flex-shrink-0">
-                Đổi mật khẩu
+              <Button type="submit" isLoading={pwLoading} leftIcon={<KeyRound size={15} />}>
+                Đổi
               </Button>
             </div>
           </div>
         </form>
       </Card>
 
-      {/* Mục 2: Xuất báo cáo dữ liệu */}
+      {/* Mục 2: Xuất Báo Cáo & Sổ Điểm */}
       <Card padding="md" className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
           <div className="flex items-center gap-2">
             <span className="text-xl">📊</span>
-            <h2 className="font-bold text-base text-[var(--color-text)]">Xuất Báo Cáo & Hồ Sơ Lớp</h2>
+            <div>
+              <h2 className="font-bold text-base text-[var(--color-text)]">Xuất Báo Cáo & Sổ Điểm</h2>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                Đang chọn: <span className="font-bold text-[var(--color-primary)]">{activeClass?.name || 'Chưa chọn lớp'}</span> ({students.length} học sinh)
+              </p>
+            </div>
           </div>
-          {classes.length > 0 && (
-            <select
-              value={selectedClassId}
-              onChange={e => setSelectedClassId(e.target.value)}
-              className="p-1.5 rounded-lg border bg-white text-xs font-bold"
-              style={{ borderColor: 'var(--color-border)' }}
-            >
-              {classes.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
 
-        <p className="text-xs text-[var(--color-text-muted)]">
-          Tải xuống các báo cáo định dạng Excel và PDF phục vụ công tác lưu trữ hoặc gửi Ban Giám Hiệu / Phụ huynh.
-        </p>
+          <select
+            value={selectedClassId}
+            onChange={e => setSelectedClassId(e.target.value)}
+            className="p-2 rounded-lg border bg-white text-xs font-bold"
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Button
-            variant="ghost"
+            variant="secondary"
+            leftIcon={<FileSpreadsheet size={16} className="text-emerald-600" />}
             onClick={handleExportStudentsExcel}
-            leftIcon={<FileSpreadsheet size={16} className="text-green-600" />}
-            className="border-green-200 hover:bg-green-50 justify-start text-xs"
+            className="justify-start py-3"
           >
-            Xuất DS Học sinh (.xlsx)
+            Xuất Danh sách lớp (Excel)
           </Button>
 
           <Button
-            variant="ghost"
+            variant="secondary"
+            leftIcon={<FileSpreadsheet size={16} className="text-emerald-600" />}
             onClick={handleExportAttendanceExcel}
-            leftIcon={<FileSpreadsheet size={16} className="text-blue-600" />}
-            className="border-blue-200 hover:bg-blue-50 justify-start text-xs"
+            className="justify-start py-3"
           >
-            Xuất Điểm danh (.xlsx)
+            Xuất Sổ Điểm danh (Excel)
           </Button>
 
           <Button
-            variant="ghost"
+            variant="secondary"
+            leftIcon={<FileText size={16} className="text-rose-600" />}
             onClick={handleExportPDF}
-            leftIcon={<FileText size={16} className="text-red-500" />}
-            className="border-red-200 hover:bg-red-50 justify-start text-xs"
+            className="justify-start py-3"
           >
-            Xuất Phiếu Báo Cáo (.pdf)
+            Xuất Phiếu Báo Cáo (PDF)
           </Button>
         </div>
       </Card>
 
-      {/* Mục 3: Trải nghiệm trong lớp học (Chế độ yên tĩnh & Âm thanh) */}
+      {/* Mục 3: Cài đặt Âm thanh & Trải nghiệm */}
       <Card padding="md" className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
-          <span className="text-xl">🔕</span>
-          <h2 className="font-bold text-base text-[var(--color-text)]">Chế độ Tiết học & Âm thanh</h2>
+          <span className="text-xl">🔔</span>
+          <h2 className="font-bold text-base text-[var(--color-text)]">Âm thanh & Trải nghiệm</h2>
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* Ngày yên tĩnh */}
-          <div className="flex items-center justify-between p-3 rounded-xl border bg-[var(--color-surface-alt)]" style={{ borderColor: 'var(--color-border)' }}>
+          {/* Chế độ yên lặng */}
+          <div className="flex items-center justify-between p-3 rounded-xl border bg-white" style={{ borderColor: 'var(--color-border)' }}>
             <div>
-              <p className="font-bold text-sm text-[var(--color-text)]">Chế độ "Ngày Yên Tĩnh" (Quiet Day)</p>
+              <p className="font-bold text-sm text-[var(--color-text)]">Chế độ im lặng trong giờ kiểm tra</p>
               <p className="text-xs text-[var(--color-text-muted)]">Tắt toàn bộ hiệu ứng âm thanh cổ vũ ồn ào khi lớp cần tập trung tối đa.</p>
             </div>
             <button
