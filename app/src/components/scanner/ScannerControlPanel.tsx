@@ -187,7 +187,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     setIsTimerRunning(false)
     setLastScanCounts(null)
 
-    // Phát câu hỏi
+    // Phát câu hỏi đồng thời kích hoạt đồng hồ đếm ngược (nếu bật autoStartTimer)
     await onBroadcast({
       type: 'SHOW_QUESTION',
       question: {
@@ -199,15 +199,11 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       },
       index: targetIndex + 1,
       total: questions.length,
+      seconds: autoStartTimer ? countdownSeconds : undefined,
     })
 
-    // Tự động kích hoạt đồng hồ đếm ngược
     if (autoStartTimer) {
       setIsTimerRunning(true)
-      await onBroadcast({
-        type: 'START_TIMER',
-        seconds: countdownSeconds,
-      })
     }
   }
 

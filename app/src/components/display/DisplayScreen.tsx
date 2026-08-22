@@ -55,7 +55,12 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         setRevealedAnswer(null)
         setScanCounts(null)
         setLeaderboard(null)
-        setTimeLeft(null)
+        if (lastEvent.seconds && lastEvent.seconds > 0) {
+          setInitialTime(lastEvent.seconds)
+          setTimeLeft(lastEvent.seconds)
+        } else {
+          setTimeLeft(null)
+        }
         break
 
       case 'START_TIMER':

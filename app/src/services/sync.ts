@@ -3,7 +3,7 @@
 
 export type RealtimeEvent =
   | { type: 'DISPLAY_READY'; roomCode: string }
-  | { type: 'SHOW_QUESTION'; question: any; index: number; total: number }
+  | { type: 'SHOW_QUESTION'; question: any; index: number; total: number; seconds?: number }
   | { type: 'START_TIMER'; seconds: number }
   | { type: 'STOP_TIMER' }
   | { type: 'SCAN_PREVIEW'; counts: { red: number; green: number; yellow: number; blue: number } }
@@ -17,7 +17,7 @@ export function subscribeToRoom(
   onMessage: (event: RealtimeEvent) => void
 ) {
   let isSubscribed = true
-  let lastTimestamp = Date.now()
+  let lastTimestamp = 0 // Khởi tạo từ 0 để nhận ngay trạng thái hiện tại của phòng
 
   // Polling chu kỳ 200ms siêu nhẹ với Local Server API (< 2ms response time)
   const interval = setInterval(async () => {
