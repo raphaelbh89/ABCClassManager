@@ -312,25 +312,25 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         )}
       </div>
 
-      {/* ─── ĐỒNG HỒ ĐẾM NGƯỢC KHỔNG LỒ Ở CHÍNH GIỮA MÀN HÌNH (CENTER GIANT STOPWATCH) ─── */}
+      {/* ─── ĐỒNG HỒ ĐẾM NGƯỢC Ở PHÍA TRÊN CHÍNH GIỮA MÀN HÌNH (TOP-CENTER STOPWATCH) ─── */}
       {timeLeft !== null && (
-        <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center bg-black/10 backdrop-blur-2xs animate-in fade-in duration-200">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-in fade-in zoom-in-95 duration-200">
           <div
-            className={`relative flex flex-col items-center justify-center p-8 rounded-full shadow-[0_20px_60px_rgba(0,0,0,0.35)] border-8 transition-all transform ${
+            className={`relative flex flex-col items-center justify-center p-3 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.25)] border-4 transition-all transform ${
               timeLeft <= 5 && timeLeft > 0
                 ? 'bg-red-600 border-red-300 text-white scale-110 animate-pulse'
                 : timeLeft === 0
-                ? 'bg-amber-500 border-amber-200 text-white scale-115'
-                : 'bg-white/95 border-amber-400 text-slate-900 scale-100'
+                ? 'bg-amber-500 border-amber-200 text-white scale-105'
+                : 'bg-white/98 border-amber-400 text-slate-900 shadow-amber-200'
             }`}
-            style={{ width: '280px', height: '280px' }}
+            style={{ width: '120px', height: '120px' }}
           >
             {/* Vòng tròn SVG đếm ngược Radial Ring */}
-            <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none p-2" viewBox="0 0 100 100">
+            <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none p-1.5" viewBox="0 0 100 100">
               <circle
                 cx="50"
                 cy="50"
-                r="45"
+                r="44"
                 fill="transparent"
                 stroke={timeLeft <= 5 ? 'rgba(255,255,255,0.3)' : '#F1F5F9'}
                 strokeWidth="7"
@@ -338,12 +338,12 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
               <circle
                 cx="50"
                 cy="50"
-                r="45"
+                r="44"
                 fill="transparent"
                 stroke={timeLeft <= 5 ? '#FFFFFF' : '#F59E0B'}
                 strokeWidth="7"
-                strokeDasharray="283"
-                strokeDashoffset={strokeDashoffset}
+                strokeDasharray="276"
+                strokeDashoffset={276 * (1 - progressRatio)}
                 strokeLinecap="round"
                 className="transition-all duration-1000 ease-linear"
               />
@@ -351,21 +351,21 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
 
             {/* Nội dung bên trong đồng hồ */}
             <div className="flex flex-col items-center justify-center relative z-10">
-              <Clock size={32} className={`mb-1 ${timeLeft <= 5 ? 'animate-bounce text-white' : 'text-amber-500'}`} />
+              <Clock size={16} className={`mb-0.5 ${timeLeft <= 5 ? 'animate-bounce text-white' : 'text-amber-500'}`} />
 
               <span
                 className={`font-black tracking-tight leading-none ${
-                  timeLeft <= 5 ? 'text-8xl drop-shadow-md' : 'text-7xl text-slate-900'
+                  timeLeft <= 5 ? 'text-4xl drop-shadow-sm' : 'text-3xl text-slate-900'
                 }`}
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
                 {timeLeft}
               </span>
 
-              <span className={`text-xs font-black uppercase tracking-widest mt-1 ${
+              <span className={`text-[9px] font-black uppercase tracking-wider mt-0.5 ${
                 timeLeft <= 5 ? 'text-white/90' : 'text-slate-500'
               }`}>
-                {timeLeft === 0 ? '⏰ HẾT GIỜ! GIƠ THẺ!' : 'GIÂY'}
+                {timeLeft === 0 ? 'HẾT GIỜ!' : 'GIÂY'}
               </span>
             </div>
           </div>
