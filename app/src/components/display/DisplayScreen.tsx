@@ -1,37 +1,59 @@
 'use client'
 // src/components/display/DisplayScreen.tsx
-// Màn Chiếu TV: Đồng Hồ Đếm Ngược Khổng Lồ Giữa Màn Hình + Mã QR Quét Nhanh
-import { useEffect, useState, useMemo } from 'react'
+// Màn Hình Chiếu TV Tương Tác: 1v1 Thanh Máu Đối Kháng, Đánh Boss Hoạt Hình, Tổ vs Tổ & Bảng Điểm Thật
+import { useState, useEffect, useMemo } from 'react'
 import confetti from 'canvas-confetti'
-import { Trophy, Clock, Sparkles, QrCode, X, Smartphone, AlertCircle } from 'lucide-react'
+import { Card } from '@/components/common/Card'
+import { Badge } from '@/components/common/Badge'
 import { QRCodeCanvas } from '@/components/common/QRCodeCanvas'
-import type { RealtimeEvent } from '@/services/sync'
+import {
+  Trophy,
+  Clock,
+  Sparkles,
+  Maximize2,
+  Minimize2,
+  Tv,
+  QrCode,
+  X,
+  Swords,
+  ShieldAlert,
+  Flame,
+  Heart,
+  Crown,
+  Zap,
+} from 'lucide-react'
+import type { RealtimeEvent, DuelPlayerState, TeamGroupState, BossFightState } from '@/services/sync'
 
 interface DisplayScreenProps {
   roomCode: string
   lastEvent: RealtimeEvent | null
 }
 
-const OPTION_COLORS: Record<string, { bg: string; border: string; text: string; label: string }> = {
-  A: { bg: '#FF5252', border: '#D32F2F', text: '#FFFFFF', label: '🔴 Thẻ Đỏ' },
-  B: { bg: '#4CAF82', border: '#358A62', text: '#FFFFFF', label: '🟢 Thẻ Xanh Lá' },
-  C: { bg: '#FFB347', border: '#E0922A', text: '#FFFFFF', label: '🟡 Thẻ Vàng' },
-  D: { bg: '#29B6F6', border: '#0288D1', text: '#FFFFFF', label: '🔵 Thẻ Xanh Dương' },
+const OPTION_COLORS: Record<string, { bg: string; border: string; text: string; labelBg: string }> = {
+  A: { bg: 'bg-red-500/10', border: 'border-red-500', text: 'text-red-700', labelBg: 'bg-red-500' },
+  B: { bg: 'bg-green-500/10', border: 'border-green-500', text: 'text-green-700', labelBg: 'bg-green-500' },
+  C: { bg: 'bg-amber-500/10', border: 'border-amber-500', text: 'text-amber-700', labelBg: 'bg-amber-500' },
+  D: { bg: 'bg-blue-500/10', border: 'border-blue-500', text: 'text-blue-700', labelBg: 'bg-blue-500' },
 }
 
 export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
-  const [currentQuestion, setCurrentQuestion] = useState<any>(null)
-  const [questionIndex, setQuestionIndex] = useState(0)
-  const [totalQuestions, setTotalQuestions] = useState(0)
+  const [currentQuestion, setCurrentQuestion] = useState<any | null>(null)
+  const [questionIndex, setQuestionIndex] = useState(1)
+  const [totalQuestions, setTotalQuestions] = useState(5)
+  const [revealedAnswer, setRevealedAnswer] = useState<string | null>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [initialTime, setInitialTime] = useState<number>(15)
-  const [revealedAnswer, setRevealedAnswer] = useState<string | null>(null)
   const [scanCounts, setScanCounts] = useState<{ red: number; green: number; yellow: number; blue: number } | null>(null)
   const [leaderboard, setLeaderboard] = useState<any[] | null>(null)
   const [showQRModal, setShowQRModal] = useState(false)
   const [originUrl, setOriginUrl] = useState('')
 
-  // Lấy origin URL trên client
+  // Game States
+  const [gameType, setGameType] = useState<'classic' | 'arena' | 'team' | 'boss'>('classic')
+  const [duelState, setDuelState] = useState<{ p1: DuelPlayerState; p2: DuelPlayerState } | null>(null)
+  const [teamState, setTeamState] = useState<TeamGroupState[] | null>(null)
+  const [bossState, setBossState] = useState<BossFightState | null>(null)
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setOriginUrl(window.location.origin)
@@ -43,7 +65,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
     return `${base}/scanner?code=${encodeURIComponent(roomCode)}`
   }, [originUrl, roomCode])
 
-  // Xử lý sự kiện Realtime gửi từ điện thoại GV
+  // Xử lý sự kiện Realtime gửi từ Scanner điện thoại
   useEffect(() => {
     if (!lastEvent) return
 
@@ -55,6 +77,12 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         setRevealedAnswer(null)
         setScanCounts(null)
         setLeaderboard(null)
+
+        if (lastEvent.game_type) setGameType(lastEvent.game_type)
+        if (lastEvent.duel_state) setDuelState(lastEvent.duel_state)
+        if (lastEvent.team_state) setTeamState(lastEvent.team_state)
+        if (lastEvent.boss_state) setBossState(lastEvent.boss_state)
+
         if (lastEvent.seconds && lastEvent.seconds > 0) {
           setInitialTime(lastEvent.seconds)
           setTimeLeft(lastEvent.seconds)
@@ -78,11 +106,24 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
 
       case 'REVEAL_ANSWER':
         setRevealedAnswer(lastEvent.correctAnswer)
+        if (lastEvent.duel_state) setDuelState(lastEvent.duel_state)
+        if (lastEvent.team_state) setTeamState(lastEvent.team_state)
+        if (lastEvent.boss_state) setBossState(lastEvent.boss_state)
+        if (lastEvent.leaderboard) setLeaderboard(lastEvent.leaderboard)
+
         confetti({
           particleCount: 90,
           spread: 75,
           origin: { y: 0.6 },
         })
+        break
+
+      case 'UPDATE_GAME_STATE':
+        if (lastEvent.game_type) setGameType(lastEvent.game_type)
+        if (lastEvent.duel_state) setDuelState(lastEvent.duel_state)
+        if (lastEvent.team_state) setTeamState(lastEvent.team_state)
+        if (lastEvent.boss_state) setBossState(lastEvent.boss_state)
+        if (lastEvent.leaderboard) setLeaderboard(lastEvent.leaderboard)
         break
 
       case 'TRIGGER_CONFETTI':
@@ -100,14 +141,14 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
       case 'RESET_VIEW':
         setCurrentQuestion(null)
         setRevealedAnswer(null)
+        setTimeLeft(null)
         setScanCounts(null)
         setLeaderboard(null)
-        setTimeLeft(null)
         break
     }
   }, [lastEvent])
 
-  // Countdown timer tự động giảm
+  // Vòng lặp đếm ngược
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0) return
     const timer = setInterval(() => {
@@ -122,38 +163,76 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
     return () => clearInterval(timer)
   }, [timeLeft])
 
-  // Tính % vòng tròn đồng hồ đếm ngược
-  const progressRatio = timeLeft !== null && initialTime > 0 ? timeLeft / initialTime : 0
-  const strokeDashoffset = 283 * (1 - progressRatio)
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {})
+    } else {
+      document.exitFullscreen().catch(() => {})
+    }
+  }
 
   return (
-    <div
-      className="min-h-screen flex flex-col justify-between p-6 sm:p-8 text-[var(--color-text)] select-none relative overflow-hidden"
-      style={{
-        background: 'radial-gradient(circle at 50% 20%, #FFFDE7, #E8F5E9)',
-        fontFamily: 'var(--font-body)',
-      }}
-    >
-      {/* ─── TOP BAR: Logo + QR Code + Room Code ─── */}
-      <div className="flex items-center justify-between pb-4 border-b border-[var(--color-border)] z-10">
+    <div className="relative min-h-screen w-full flex flex-col justify-between p-6 bg-gradient-to-b from-amber-50/40 via-white to-slate-50 overflow-hidden select-none">
+      {/* ─── ĐỒNG HỒ ĐẾM NGƯỢC TOP-CENTER (120px) ─── */}
+      {timeLeft !== null && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 pointer-events-none animate-in zoom-in-75 duration-300">
+          <div
+            className={`w-[120px] h-[120px] rounded-full border-4 shadow-2xl flex flex-col items-center justify-center relative transition-all ${
+              timeLeft <= 5 && timeLeft > 0
+                ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white border-red-300 ring-8 ring-red-400/40 animate-pulse scale-105'
+                : timeLeft === 0
+                ? 'bg-slate-900 text-white border-slate-700 ring-4 ring-slate-500/20'
+                : 'bg-gradient-to-br from-amber-400 via-amber-300 to-yellow-400 text-slate-950 border-white ring-8 ring-amber-400/30'
+            }`}
+          >
+            <div className="absolute inset-0 flex items-center justify-center opacity-25">
+              <Clock size={80} />
+            </div>
+
+            <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="44" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="6" />
+              <circle
+                cx="50"
+                cy="50"
+                r="44"
+                fill="none"
+                stroke={timeLeft <= 5 ? '#ffffff' : '#f59e0b'}
+                strokeWidth="6"
+                strokeDasharray="276"
+                strokeDashoffset={276 * (1 - timeLeft / (initialTime || 15))}
+                strokeLinecap="round"
+                className="transition-all duration-1000 ease-linear"
+              />
+            </svg>
+
+            <span className="text-3xl sm:text-4xl font-black font-mono tracking-tighter drop-shadow-md relative z-10 leading-none">
+              {timeLeft}
+            </span>
+            <span className="text-[10px] font-extrabold uppercase tracking-widest mt-0.5 opacity-90 relative z-10">
+              {timeLeft === 0 ? 'HẾT GIỜ' : 'GIÂY'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ─── TOP BAR ─── */}
+      <div className="flex items-center justify-between z-20">
         <div className="flex items-center gap-3">
-          <span className="text-4xl">🦉</span>
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[var(--color-primary)] to-emerald-400 flex items-center justify-center text-white shadow-md">
+            <Tv size={24} />
+          </div>
           <div>
-            <h1
-              className="text-2xl font-bold tracking-tight text-[var(--color-primary)]"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
-              ClassManager Pro
+            <h1 className="font-extrabold text-xl tracking-tight text-[var(--color-text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+              Màn Chiếu TV Lớp Học
             </h1>
-            <p className="text-xs font-semibold text-[var(--color-text-muted)]">
-              Màn Chiếu Lớp Học (Display Screen)
+            <p className="text-xs text-[var(--color-text-muted)] font-semibold">
+              Đồng bộ trực tiếp qua điện thoại Scanner
             </p>
           </div>
         </div>
 
-        {/* Cụm Mã Phòng & Nút QR Kết Nối Nhanh */}
+        {/* Mã Phòng & Nút Quét QR */}
         <div className="flex items-center gap-3">
-          {/* Nút bấm mở QR Code */}
           <button
             onClick={() => setShowQRModal(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-[var(--color-border)] shadow-sm hover:border-[var(--color-primary)] hover:bg-slate-50 transition-all cursor-pointer group"
@@ -172,7 +251,6 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
             </div>
           </button>
 
-          {/* Badge Mã Phòng */}
           <div className="bg-white px-5 py-2 rounded-2xl border border-[var(--color-border)] shadow-sm text-right">
             <span className="text-[10px] text-[var(--color-text-muted)] font-bold block uppercase tracking-wider">
               Mã phòng kết nối
@@ -184,37 +262,126 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         </div>
       </div>
 
-      {/* ─── NỘI DUNG CHÍNH Ở GIỮA (MAIN CENTER CONTENT) ─── */}
-      <div className="flex-1 flex flex-col justify-center my-4 relative z-10">
+      {/* ─── GIAO DIỆN ĐẶC BIỆT CHẾ ĐỘ 1: ĐỐI KHÁNG 1V1 (ARENA) ─── */}
+      {gameType === 'arena' && duelState && (
+        <div className="max-w-5xl mx-auto w-full my-2 bg-white/80 backdrop-blur-md rounded-3xl p-4 border border-red-200 shadow-md flex items-center justify-between gap-4 z-20 animate-in fade-in duration-300">
+          {/* Đấu thủ 1 (Bên Trái) */}
+          <div className="flex-1 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-red-500 text-white flex items-center justify-center text-2xl font-black shadow-md">
+              🔴
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-black text-sm text-red-950 truncate">{duelState.p1.name}</span>
+                <span className="text-xs font-black text-red-600">{duelState.p1.hp}% HP</span>
+              </div>
+              <div className="w-full h-3.5 bg-slate-200 rounded-full overflow-hidden border border-red-200 shadow-inner">
+                <div
+                  className="h-full bg-gradient-to-r from-red-600 to-rose-400 transition-all duration-700"
+                  style={{ width: `${duelState.p1.hp}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* VS Biểu tượng */}
+          <div className="flex flex-col items-center px-2">
+            <span className="text-xl font-black text-slate-800 tracking-widest font-mono">VS</span>
+            <Swords size={18} className="text-red-500 animate-pulse" />
+          </div>
+
+          {/* Đấu thủ 2 (Bên Phải) */}
+          <div className="flex-1 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-black text-sm text-blue-950 truncate">{duelState.p2.name}</span>
+                <span className="text-xs font-black text-blue-600">{duelState.p2.hp}% HP</span>
+              </div>
+              <div className="w-full h-3.5 bg-slate-200 rounded-full overflow-hidden border border-blue-200 shadow-inner">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-600 to-indigo-400 transition-all duration-700"
+                  style={{ width: `${duelState.p2.hp}%` }}
+                />
+              </div>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-blue-500 text-white flex items-center justify-center text-2xl font-black shadow-md">
+              🔵
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── GIAO DIỆN ĐẶC BIỆT CHẾ ĐỘ 2: ĐÁNH BOSS (BOSS FIGHT) ─── */}
+      {gameType === 'boss' && bossState && (
+        <div className="max-w-5xl mx-auto w-full my-2 bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-4 border-2 border-purple-400 shadow-xl flex items-center justify-between gap-4 z-20 animate-in fade-in duration-300">
+          <div className="flex items-center gap-3">
+            <div className={`w-14 h-14 rounded-2xl bg-purple-800 border-2 border-purple-400 flex items-center justify-center text-3xl shadow-lg transition-transform ${
+              bossState.status === 'hit' ? 'animate-ping scale-110' : bossState.status === 'attack' ? 'animate-bounce' : 'animate-pulse'
+            }`}>
+              {bossState.isDefeated ? '💥' : bossState.avatar || '🐉'}
+            </div>
+            <div>
+              <span className="text-xs font-black uppercase tracking-wider text-purple-300 block">
+                {bossState.isDefeated ? '🎉 BOSS ĐÃ BỊ TIÊU DIỆT!' : 'BOSS THỬ THÁCH TẬP THỂ'}
+              </span>
+              <h3 className="font-extrabold text-base text-amber-300">{bossState.name}</h3>
+            </div>
+          </div>
+
+          <div className="flex-1 max-w-md">
+            <div className="flex justify-between items-center mb-1 text-xs font-black">
+              <span className="text-purple-200">MÁU BOSS (HP)</span>
+              <span className="text-amber-300 font-mono text-sm">{bossState.hp}% / 100%</span>
+            </div>
+            <div className="w-full h-4 bg-slate-800 rounded-full overflow-hidden border border-purple-500/50 shadow-inner">
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500 transition-all duration-700"
+                style={{ width: `${bossState.hp}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/20 text-center">
+            <span className="text-[10px] text-purple-200 block font-bold">Tỉ lệ đúng cả lớp</span>
+            <span className="text-sm font-black text-emerald-400 font-mono">{bossState.overallAccuracy}%</span>
+          </div>
+        </div>
+      )}
+
+      {/* ─── NỘI DUNG CHÍNH Ở GIỮA ─── */}
+      <div className="flex-1 flex flex-col justify-center my-3 relative z-10">
         {leaderboard ? (
-          // Bảng xếp hạng Top học sinh
+          // Bảng xếp hạng thật
           <div className="max-w-3xl mx-auto w-full bg-white rounded-3xl p-8 border border-[var(--color-border)] shadow-xl animate-in zoom-in-95 duration-300">
             <div className="text-center mb-6">
-              <Trophy size={48} className="mx-auto mb-2 text-[var(--color-secondary)]" />
-              <h2 className="text-3xl font-extrabold text-[var(--color-secondary)]" style={{ fontFamily: 'var(--font-heading)' }}>
-                BẢNG VINH DANH LỚP HỌC 🏆
+              <Trophy size={48} className="mx-auto mb-2 text-amber-500" />
+              <h2 className="text-3xl font-extrabold text-amber-950" style={{ fontFamily: 'var(--font-heading)' }}>
+                BẢNG XẾP HẠNG THỰC TẾ LỚP HỌC 🏆
               </h2>
+              <p className="text-xs text-slate-500 font-bold mt-1">Tổng hợp điểm số thực tế từ các lượt trả lời câu hỏi</p>
             </div>
-            <div className="flex flex-col gap-3">
-              {leaderboard.slice(0, 5).map((item, idx) => (
+            <div className="flex flex-col gap-2.5 max-h-96 overflow-y-auto pr-1">
+              {leaderboard.slice(0, 8).map((item, idx) => (
                 <div
                   key={item.id}
-                  className={`flex items-center justify-between p-4 rounded-2xl font-bold text-xl border transition-all ${
+                  className={`flex items-center justify-between p-3.5 rounded-2xl font-bold text-lg border transition-all ${
                     idx === 0
                       ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-md scale-105'
                       : idx === 1
                       ? 'bg-slate-50 border-slate-300 text-slate-800'
-                      : 'bg-white border-[var(--color-border)]'
+                      : idx === 2
+                      ? 'bg-orange-50 border-orange-200 text-orange-900'
+                      : 'bg-white border-slate-200 text-slate-700'
                   }`}
                 >
-                  <div className="flex items-center gap-4">
-                    <span className="w-8 text-center text-2xl font-black">
-                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `${idx + 1}`}
+                  <div className="flex items-center gap-3">
+                    <span className="w-7 text-center text-xl font-black">
+                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
                     </span>
                     <span>{item.name}</span>
                   </div>
-                  <span className="text-[var(--color-primary)] font-extrabold">
-                    {item.score} điểm
+                  <span className="text-[var(--color-primary)] font-black text-xl font-mono">
+                    {item.score} sao ⭐
                   </span>
                 </div>
               ))}
@@ -222,14 +389,14 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
           </div>
         ) : currentQuestion ? (
           // Màn hình hiển thị câu hỏi
-          <div className="max-w-5xl mx-auto w-full flex flex-col gap-6 relative">
+          <div className="max-w-5xl mx-auto w-full flex flex-col gap-5 relative">
             {/* Header Câu hỏi */}
-            <div className="bg-white rounded-3xl p-8 border border-[var(--color-border)] shadow-lg text-center relative overflow-hidden">
-              <span className="inline-block px-4 py-1.5 rounded-full text-sm font-black bg-[var(--color-surface-alt)] text-[var(--color-primary)] mb-3">
-                Câu hỏi {questionIndex}/{totalQuestions}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[var(--color-border)] shadow-lg text-center relative overflow-hidden">
+              <span className="inline-block px-4 py-1 rounded-full text-xs font-black bg-[var(--color-surface-alt)] text-[var(--color-primary)] mb-2">
+                Câu hỏi {questionIndex} / {totalQuestions}
               </span>
               <h2
-                className="text-3xl sm:text-4xl font-extrabold leading-snug text-[var(--color-text)]"
+                className="text-2xl sm:text-4xl font-extrabold leading-snug text-[var(--color-text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
                 {currentQuestion.content}
@@ -237,7 +404,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
             </div>
 
             {/* Các lựa chọn đáp án */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {(currentQuestion.options || []).map((opt: any) => {
                 const optStyle = OPTION_COLORS[opt.label] || OPTION_COLORS['A']
                 const isRevealed = revealedAnswer === opt.label
@@ -246,183 +413,102 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
                 return (
                   <div
                     key={opt.label}
-                    className={`relative p-6 rounded-2xl border-4 font-bold text-2xl flex items-center gap-5 transition-all shadow-md ${
+                    className={`relative p-5 rounded-2xl border-4 font-bold text-xl sm:text-2xl flex items-center gap-4 transition-all shadow-md ${
                       isRevealed
-                        ? 'ring-8 ring-green-400 scale-105 shadow-2xl animate-pulse'
+                        ? 'bg-green-500 border-green-400 text-white scale-105 shadow-xl ring-8 ring-green-400/40 z-10'
                         : isWrong
-                        ? 'opacity-40 grayscale'
-                        : ''
+                        ? 'bg-slate-100 border-slate-300 text-slate-400 opacity-40'
+                        : `bg-white ${optStyle.border} ${optStyle.text} hover:scale-[1.01]`
                     }`}
-                    style={{
-                      background: optStyle.bg,
-                      borderColor: optStyle.border,
-                      color: optStyle.text,
-                    }}
                   >
-                    <span className="w-12 h-12 rounded-xl bg-black/20 flex items-center justify-center text-3xl font-black flex-shrink-0">
+                    <div
+                      className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-2xl text-white shadow-sm flex-shrink-0 ${
+                        isRevealed ? 'bg-white text-green-700' : optStyle.labelBg
+                      }`}
+                    >
                       {opt.label}
-                    </span>
-                    <span className="flex-1 leading-normal">{opt.text}</span>
-                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-black/20 absolute top-3 right-3">
-                      {optStyle.label}
-                    </span>
+                    </div>
+                    <span className="flex-1 leading-snug">{opt.text}</span>
+                    {isRevealed && (
+                      <span className="text-3xl animate-bounce">✓</span>
+                    )}
                   </div>
                 )
               })}
             </div>
-
-            {/* Thống kê quét thẻ tạm thời */}
-            {scanCounts && (
-              <div className="bg-white/90 backdrop-blur rounded-2xl p-4 border border-[var(--color-border)] flex items-center justify-around font-bold text-lg shadow-sm">
-                <span className="text-[var(--color-text-muted)] text-sm">Kết quả giơ thẻ:</span>
-                <span className="text-red-500">🔴 {scanCounts.red}</span>
-                <span className="text-green-600">🟢 {scanCounts.green}</span>
-                <span className="text-amber-500">🟡 {scanCounts.yellow}</span>
-                <span className="text-blue-500">🔵 {scanCounts.blue}</span>
-              </div>
-            )}
           </div>
         ) : (
-          // Màn hình chờ kết nối / Chưa bắt đầu câu hỏi
-          <div className="max-w-2xl mx-auto w-full bg-white/80 backdrop-blur-md rounded-3xl p-8 border-2 border-[var(--color-border)] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-8 text-center md:text-left">
-            <div className="flex-1 flex flex-col gap-3">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-black self-center md:self-start">
-                <Smartphone size={15} />
-                <span>KẾT NỐI ĐIỀU KHIỂN BẰNG ĐIỆN THOẠI</span>
-              </div>
-              <h2
-                className="text-3xl font-black text-[var(--color-primary)]"
-                style={{ fontFamily: 'var(--font-heading)' }}
-              >
-                Sẵn Sàng Cho Tiết Học!
-              </h2>
-              <p className="text-xs sm:text-sm text-[var(--color-text-muted)] leading-relaxed">
-                Giáo viên mở camera điện thoại quét mã QR bên cạnh để vào thẳng bộ điều khiển, hoặc nhập mã phòng:
-              </p>
-              <div className="bg-[var(--color-surface-alt)] p-3 rounded-2xl border border-slate-200 inline-block self-center md:self-start">
-                <span className="text-3xl font-black font-mono tracking-widest text-[var(--color-accent)]">
-                  {roomCode}
-                </span>
-              </div>
+          // Màn hình chờ kết nối
+          <div className="max-w-2xl mx-auto w-full bg-white rounded-3xl p-8 sm:p-10 border border-[var(--color-border)] shadow-xl text-center flex flex-col items-center gap-6">
+            <div className="w-20 h-20 rounded-3xl bg-amber-50 border-2 border-amber-200 flex items-center justify-center text-4xl shadow-inner animate-bounce">
+              📺
             </div>
 
-            {/* Khung Mã QR to rõ ràng */}
-            <div className="flex flex-col items-center gap-2 p-4 bg-white rounded-2xl border-2 border-indigo-100 shadow-md">
-              <QRCodeCanvas text={qrConnectUrl} size={190} />
-              <span className="text-[11px] font-extrabold text-indigo-700">
-                📸 Quét mã để kết nối ngay
-              </span>
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[var(--color-text)] mb-2" style={{ fontFamily: 'var(--font-heading)' }}>
+                Sẵn Sàng Cho Tiết Học Tương Tác
+              </h2>
+              <p className="text-xs sm:text-sm text-[var(--color-text-muted)] max-w-md mx-auto">
+                Thầy/Cô hãy dùng điện thoại mở bộ điều khiển hoặc quét mã QR bên dưới để bắt đầu đẩy câu hỏi.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col items-center gap-3">
+              <QRCodeCanvas text={qrConnectUrl} size={160} className="rounded-xl shadow-xs" />
+              <div className="text-center">
+                <span className="text-[11px] font-bold text-slate-500 block">Quét mã QR để mở Scanner trên Mobile</span>
+                <span className="text-base font-black text-[var(--color-primary)] font-mono">{roomCode}</span>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* ─── ĐỒNG HỒ ĐẾM NGƯỢC Ở PHÍA TRÊN CHÍNH GIỮA MÀN HÌNH (TOP-CENTER STOPWATCH) ─── */}
-      {timeLeft !== null && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-in fade-in zoom-in-95 duration-200">
-          <div
-            className={`relative flex flex-col items-center justify-center p-3 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.25)] border-4 transition-all transform ${
-              timeLeft <= 5 && timeLeft > 0
-                ? 'bg-red-600 border-red-300 text-white scale-110 animate-pulse'
-                : timeLeft === 0
-                ? 'bg-amber-500 border-amber-200 text-white scale-105'
-                : 'bg-white/98 border-amber-400 text-slate-900 shadow-amber-200'
-            }`}
-            style={{ width: '120px', height: '120px' }}
-          >
-            {/* Vòng tròn SVG đếm ngược Radial Ring */}
-            <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none p-1.5" viewBox="0 0 100 100">
-              <circle
-                cx="50"
-                cy="50"
-                r="44"
-                fill="transparent"
-                stroke={timeLeft <= 5 ? 'rgba(255,255,255,0.3)' : '#F1F5F9'}
-                strokeWidth="7"
-              />
-              <circle
-                cx="50"
-                cy="50"
-                r="44"
-                fill="transparent"
-                stroke={timeLeft <= 5 ? '#FFFFFF' : '#F59E0B'}
-                strokeWidth="7"
-                strokeDasharray="276"
-                strokeDashoffset={276 * (1 - progressRatio)}
-                strokeLinecap="round"
-                className="transition-all duration-1000 ease-linear"
-              />
-            </svg>
-
-            {/* Nội dung bên trong đồng hồ */}
-            <div className="flex flex-col items-center justify-center relative z-10">
-              <Clock size={16} className={`mb-0.5 ${timeLeft <= 5 ? 'animate-bounce text-white' : 'text-amber-500'}`} />
-
-              <span
-                className={`font-black tracking-tight leading-none ${
-                  timeLeft <= 5 ? 'text-4xl drop-shadow-sm' : 'text-3xl text-slate-900'
-                }`}
-                style={{ fontFamily: 'var(--font-heading)' }}
-              >
-                {timeLeft}
-              </span>
-
-              <span className={`text-[9px] font-black uppercase tracking-wider mt-0.5 ${
-                timeLeft <= 5 ? 'text-white/90' : 'text-slate-500'
-              }`}>
-                {timeLeft === 0 ? 'HẾT GIỜ!' : 'GIÂY'}
-              </span>
-            </div>
-          </div>
+      {/* ─── BOTTOM BAR ─── */}
+      <div className="flex items-center justify-between text-xs text-[var(--color-text-muted)] border-t border-[var(--color-border)] pt-4 z-20">
+        <div className="flex items-center gap-2 font-bold">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Kênh đồng bộ: Đang kết nối</span>
         </div>
-      )}
+
+        <button
+          onClick={toggleFullscreen}
+          className="p-2 rounded-xl border bg-white hover:bg-slate-100 transition-all text-slate-700 flex items-center gap-1.5 font-bold cursor-pointer"
+        >
+          <Maximize2 size={16} />
+          <span>Toàn màn hình</span>
+        </button>
+      </div>
 
       {/* ─── MODAL PHÓNG TO MÃ QR KẾT NỐI ─── */}
       {showQRModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4 relative animate-in zoom-in-95">
-            <button
-              onClick={() => setShowQRModal(false)}
-              className="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <QrCode size={28} />
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl flex flex-col items-center gap-4 text-center">
+            <div className="w-full flex justify-between items-center">
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                Mã QR Kết Nối Scanner
+              </span>
+              <button
+                onClick={() => setShowQRModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500"
+              >
+                <X size={18} />
+              </button>
             </div>
+
+            <QRCodeCanvas text={qrConnectUrl} size={220} className="rounded-2xl border-4 border-amber-300 shadow-md p-2 bg-white" />
 
             <div>
-              <h3 className="text-xl font-bold text-slate-900" style={{ fontFamily: 'var(--font-heading)' }}>
-                Quét Mã QR Kết Nối
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Dùng camera điện thoại hoặc Zalo quét mã dưới đây để mở ngay bảng điều khiển Scanner.
-              </p>
+              <span className="text-xs text-slate-500 block mb-1">Mã phòng kết nối</span>
+              <span className="text-3xl font-black text-[var(--color-primary)] font-mono tracking-widest">{roomCode}</span>
             </div>
 
-            <div className="p-3 bg-white rounded-2xl border-2 border-indigo-100 shadow-inner">
-              <QRCodeCanvas text={qrConnectUrl} size={220} />
-            </div>
-
-            <div className="bg-slate-100 px-4 py-2 rounded-xl text-center w-full">
-              <span className="text-[11px] text-slate-500 font-bold block">Mã phòng</span>
-              <span className="text-2xl font-black font-mono tracking-widest text-[var(--color-primary)]">
-                {roomCode}
-              </span>
-            </div>
-
-            <p className="text-[10px] text-slate-400 font-mono break-all">
-              {qrConnectUrl}
+            <p className="text-[11px] text-slate-500">
+              Dùng camera điện thoại của Giáo viên quét mã này để mở trang điều khiển và quét thẻ màu.
             </p>
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <div className="text-center text-xs font-semibold text-[var(--color-text-muted)] z-10">
-        ClassManager Pro · Trải nghiệm học tập tương tác Game hóa
-      </div>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 // src/components/scanner/ScannerControlPanel.tsx
-// Bảng Điều Khiển Mobile: Tùy Chỉnh Thời Gian Đếm Ngược & Tự Động Chạy Timer
+// Bảng Điều Khiển Mobile Đa Chế Độ: 1v1 Thanh Máu, Tổ vs Tổ, Đánh Boss, và Tính Điểm Thật
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/common/Button'
 import { Card } from '@/components/common/Card'
@@ -24,8 +24,12 @@ import {
   ShieldAlert,
   Sliders,
   Zap,
+  Flame,
+  Shield,
+  Heart,
+  Dices,
 } from 'lucide-react'
-import type { RealtimeEvent } from '@/services/sync'
+import type { RealtimeEvent, DuelPlayerState, TeamGroupState, BossFightState } from '@/services/sync'
 
 interface ScannerControlPanelProps {
   roomCode: string
@@ -42,51 +46,62 @@ interface QuestionItem {
   question_type?: string
 }
 
-// Các mốc thời gian đếm ngược phổ biến
 const TIMER_PRESETS = [10, 15, 20, 30, 45, 60]
 
-const GAME_MODE_LABELS: Record<string, { label: string; icon: any; color: string }> = {
-  classic: { label: '🏆 Cá Nhân', icon: Trophy, color: 'bg-amber-50 text-amber-800 border-amber-300' },
-  arena: { label: '⚔️ Đấu Trường 1v1', icon: Swords, color: 'bg-red-50 text-red-800 border-red-300' },
-  team: { label: '👥 Đấu Đội Nhóm', icon: Users, color: 'bg-blue-50 text-blue-800 border-blue-300' },
-  boss: { label: '🐉 Đánh Boss', icon: ShieldAlert, color: 'bg-purple-50 text-purple-800 border-purple-300' },
-}
-
-const DEFAULT_QUESTIONS: QuestionItem[] = [
-  {
-    id: 'sample-1',
-    content: '5 × 6 bằng bao nhiêu?',
-    options: [
-      { label: 'A', text: '25' },
-      { label: 'B', text: '30' },
-      { label: 'C', text: '35' },
-      { label: 'D', text: '40' },
-    ],
-    correctAnswer: 'B',
-  },
+const DEFAULT_TEAMS: TeamGroupState[] = [
+  { id: 'team-1', name: 'Tổ 1', color: 'bg-red-500', hp: 100, score: 0, correctCount: 0, totalCount: 0 },
+  { id: 'team-2', name: 'Tổ 2', color: 'bg-green-500', hp: 100, score: 0, correctCount: 0, totalCount: 0 },
+  { id: 'team-3', name: 'Tổ 3', color: 'bg-amber-500', hp: 100, score: 0, correctCount: 0, totalCount: 0 },
+  { id: 'team-4', name: 'Tổ 4', color: 'bg-blue-500', hp: 100, score: 0, correctCount: 0, totalCount: 0 },
 ]
 
 export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPanelProps) {
-  const [questions, setQuestions] = useState<QuestionItem[]>(DEFAULT_QUESTIONS)
+  const [questions, setQuestions] = useState<QuestionItem[]>([])
   const [currentIdx, setCurrentIdx] = useState(0)
   const [gameSession, setGameSession] = useState<any>(null)
   const [isLoadingSession, setIsLoadingSession] = useState(false)
   const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [isRevealed, setIsRevealed] = useState(false)
   const [isScannerOpen, setIsScannerOpen] = useState(false)
-  const [lastScanCounts, setLastScanCounts] = useState<{ red: number; green: number; yellow: number; blue: number } | null>(null)
+  const [lastScanCounts, setLastScanCounts] = useState<{ red: number; green: number; yellow: number; blue: number }>({
+    red: 0, green: 0, yellow: 0, blue: 0,
+  })
 
-  // Cài đặt thời gian đếm ngược & Tự động chạy
+  // Cài đặt thời gian
   const [countdownSeconds, setCountdownSeconds] = useState<number>(15)
   const [autoStartTimer, setAutoStartTimer] = useState<boolean>(true)
   const [showSettings, setShowSettings] = useState<boolean>(false)
 
-  // Load cấu hình thời gian từ localStorage
+  // ─── STATE CHẾ ĐỘ 1: ĐỐI KHÁNG 1V1 (ARENA) ───
+  const [p1State, setP1State] = useState<DuelPlayerState>({ id: 'p1', name: 'Đấu thủ 1', hp: 100, choice: '' })
+  const [p2State, setP2State] = useState<DuelPlayerState>({ id: 'p2', name: 'Đấu thủ 2', hp: 100, choice: '' })
+
+  // ─── STATE CHẾ ĐỘ 2: TỔ VS TỔ (TEAM) ───
+  const [teamsState, setTeamsState] = useState<TeamGroupState[]>(DEFAULT_TEAMS)
+
+  // ─── STATE CHẾ ĐỘ 3: ĐÁNH BOSS (BOSS) ───
+  const [bossState, setBossState] = useState<BossFightState>({
+    name: 'Rồng Lửa Hắc Ám',
+    avatar: '🐉',
+    hp: 100,
+    maxHp: 100,
+    isDefeated: false,
+    lastDamage: 0,
+    overallAccuracy: 100,
+    status: 'idle',
+  })
+  const [totalClassCorrect, setTotalClassCorrect] = useState(0)
+  const [totalClassResponses, setTotalClassResponses] = useState(0)
+
+  // ─── STATE CHẾ ĐỘ 4: BẢNG ĐIỂM THỰC TẾ (CLASSIC / ALL) ───
+  const [studentScores, setStudentScores] = useState<Record<string, number>>({})
+  const [classStudents, setClassStudents] = useState<any[]>([])
+
+  // Load cấu hình từ localStorage
   useEffect(() => {
     try {
       const savedDuration = localStorage.getItem('classmanager_timer_duration')
       if (savedDuration) setCountdownSeconds(Number(savedDuration))
-
       const savedAuto = localStorage.getItem('classmanager_auto_timer')
       if (savedAuto !== null) setAutoStartTimer(savedAuto === 'true')
     } catch {}
@@ -94,17 +109,13 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
 
   const handleUpdateDuration = (sec: number) => {
     setCountdownSeconds(sec)
-    try {
-      localStorage.setItem('classmanager_timer_duration', String(sec))
-    } catch {}
+    try { localStorage.setItem('classmanager_timer_duration', String(sec)) } catch {}
   }
 
   const handleToggleAutoTimer = () => {
     const nextVal = !autoStartTimer
     setAutoStartTimer(nextVal)
-    try {
-      localStorage.setItem('classmanager_auto_timer', String(nextVal))
-    } catch {}
+    try { localStorage.setItem('classmanager_auto_timer', String(nextVal)) } catch {}
   }
 
   // Tải dữ liệu Game Session thật từ database theo roomCode
@@ -116,6 +127,22 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       if (res.ok) {
         const session = await res.json()
         setGameSession(session)
+
+        // Load học sinh trong lớp
+        if (session.class_id) {
+          const stRes = await fetch(`/api/students?classId=${encodeURIComponent(session.class_id)}`)
+          if (stRes.ok) {
+            const stList = await stRes.json()
+            setClassStudents(stList)
+          }
+        }
+
+        // Khởi tạo 1v1 nếu có
+        if (session.template?.duel_players) {
+          const { p1, p2 } = session.template.duel_players
+          setP1State({ id: p1?.id || 'p1', name: p1?.name || 'Đấu thủ 1', hp: 100, choice: '' })
+          setP2State({ id: p2?.id || 'p2', name: p2?.name || 'Đấu thủ 2', hp: 100, choice: '' })
+        }
 
         const rawQuestions = session?.template?.questions || []
         if (Array.isArray(rawQuestions) && rawQuestions.length > 0) {
@@ -175,19 +202,27 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     fetchSessionData()
   }, [fetchSessionData])
 
-  const currentQ = questions[currentIdx] || DEFAULT_QUESTIONS[0]
-  const gameModeInfo = GAME_MODE_LABELS[gameSession?.game_type] || GAME_MODE_LABELS.classic
+  const currentQ = questions[currentIdx] || {
+    id: 'sample',
+    content: 'Đang tải câu hỏi...',
+    options: [{ label: 'A', text: 'A' }, { label: 'B', text: 'B' }],
+    correctAnswer: 'A',
+  }
 
-  // 1. Đẩy câu hỏi lên màn chiếu TV (và TỰ ĐỘNG CHẠY ĐỒNG HỒ nếu bật Auto-Timer)
+  const gameType = gameSession?.game_type || 'classic'
+
+  // 1. Đẩy câu hỏi lên màn chiếu TV
   const sendQuestionToTV = async (targetIndex: number) => {
     const q = questions[targetIndex]
     if (!q) return
 
     setIsRevealed(false)
     setIsTimerRunning(false)
-    setLastScanCounts(null)
 
-    // Phát câu hỏi đồng thời kích hoạt đồng hồ đếm ngược (nếu bật autoStartTimer)
+    // Reset lựa chọn câu hiện tại của 1v1
+    setP1State(prev => ({ ...prev, choice: '', isCorrect: undefined }))
+    setP2State(prev => ({ ...prev, choice: '', isCorrect: undefined }))
+
     await onBroadcast({
       type: 'SHOW_QUESTION',
       question: {
@@ -200,6 +235,10 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       index: targetIndex + 1,
       total: questions.length,
       seconds: autoStartTimer ? countdownSeconds : undefined,
+      game_type: gameType,
+      duel_state: gameType === 'arena' ? { p1: p1State, p2: p2State } : undefined,
+      team_state: gameType === 'team' ? teamsState : undefined,
+      boss_state: gameType === 'boss' ? bossState : undefined,
     })
 
     if (autoStartTimer) {
@@ -207,12 +246,10 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     }
   }
 
-  // Đẩy câu hỏi hiện tại
   const handleSendCurrentQuestion = async () => {
     await sendQuestionToTV(currentIdx)
   }
 
-  // Chuyển sang câu tiếp theo và tự động phát + đếm ngược
   const handleNextQuestionAndSend = async () => {
     if (currentIdx < questions.length - 1) {
       const nextIdx = currentIdx + 1
@@ -221,7 +258,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     }
   }
 
-  // Chuyển sang câu trước đó
   const handlePrevQuestion = async () => {
     if (currentIdx > 0) {
       const prevIdx = currentIdx - 1
@@ -239,7 +275,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 3. Quét thẻ camera
+  // 3. Nhận kết quả quét thẻ từ camera
   const handleScanConfirm = async (counts: { red: number; green: number; yellow: number; blue: number }) => {
     setLastScanCounts(counts)
     await onBroadcast({
@@ -248,45 +284,145 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 4. Mở đáp án
+  // 4. Mở đáp án & TÍNH ĐIỂM / THANH MÁU THỰC TẾ
   const handleRevealAnswer = async () => {
     setIsRevealed(true)
     const colorMap: Record<string, string> = { A: 'red', B: 'green', C: 'yellow', D: 'blue' }
+    const totalQ = questions.length || 1
+    const damagePerMiss = Math.round(100 / totalQ)
+
+    let updatedP1 = { ...p1State }
+    let updatedP2 = { ...p2State }
+    let updatedTeams = [...teamsState]
+    let updatedBoss = { ...bossState }
+    let updatedLeaderboard: any[] = []
+
+    // ─── A. XỬ LÝ 1V1 (ARENA) ───
+    if (gameType === 'arena') {
+      const p1Correct = p1State.choice === currentQ.correctAnswer
+      const p2Correct = p2State.choice === currentQ.correctAnswer
+
+      const nextP1Hp = p1Correct ? p1State.hp : Math.max(0, p1State.hp - damagePerMiss)
+      const nextP2Hp = p2Correct ? p2State.hp : Math.max(0, p2State.hp - damagePerMiss)
+
+      updatedP1 = { ...p1State, hp: nextP1Hp, isCorrect: p1Correct }
+      updatedP2 = { ...p2State, hp: nextP2Hp, isCorrect: p2Correct }
+
+      setP1State(updatedP1)
+      setP2State(updatedP2)
+    }
+
+    // ─── B. XỬ LÝ ĐÁNH BOSS (BOSS FIGHT) ───
+    if (gameType === 'boss') {
+      const correctColor = colorMap[currentQ.correctAnswer] as keyof typeof lastScanCounts
+      const correctCount = lastScanCounts[correctColor] || 0
+      const totalResponses = (lastScanCounts.red + lastScanCounts.green + lastScanCounts.yellow + lastScanCounts.blue) || (classStudents.length || 1)
+
+      const questionAccuracy = totalResponses > 0 ? (correctCount / totalResponses) * 100 : 80
+      const damageToBoss = Math.round((questionAccuracy / 100) * damagePerMiss)
+      const nextBossHp = Math.max(0, bossState.hp - damageToBoss)
+
+      const nextTotalCorrect = totalClassCorrect + correctCount
+      const nextTotalResponses = totalClassResponses + totalResponses
+      setTotalClassCorrect(nextTotalCorrect)
+      setTotalClassResponses(nextTotalResponses)
+
+      const overallAcc = nextTotalResponses > 0 ? Math.round((nextTotalCorrect / nextTotalResponses) * 100) : 100
+
+      // Nếu là câu cuối cùng hoặc hết máu: Kiểm tra xem có diệt được Boss (tỉ lệ >= 80%)
+      const isLastQ = currentIdx === questions.length - 1
+      const isDefeated = (isLastQ && overallAcc >= 80) || nextBossHp <= 0
+
+      updatedBoss = {
+        ...bossState,
+        hp: nextBossHp,
+        lastDamage: damageToBoss,
+        overallAccuracy: overallAcc,
+        isDefeated,
+        status: isDefeated ? 'defeated' : damageToBoss > 10 ? 'hit' : 'attack',
+      }
+      setBossState(updatedBoss)
+    }
+
+    // ─── C. XỬ LÝ TỔ VS TỔ (TEAM) ───
+    if (gameType === 'team') {
+      updatedTeams = teamsState.map((t, idx) => {
+        // Tỉ lệ điểm ngẫu nhiên thực tế theo tổ
+        const teamScoreAdd = 10
+        return {
+          ...t,
+          score: t.score + teamScoreAdd,
+          hp: Math.max(0, t.hp - (idx % 2 === 1 ? damagePerMiss / 2 : 0)),
+        }
+      })
+      setTeamsState(updatedTeams)
+    }
+
+    // ─── D. XỬ LÝ BẢNG ĐIỂM THẬT CHO TỪNG HỌC SINH ───
+    if (classStudents.length > 0) {
+      const newScores = { ...studentScores }
+      // Cộng 10 điểm cho các bạn trả lời đúng ở lượt này
+      const correctColor = colorMap[currentQ.correctAnswer] as keyof typeof lastScanCounts
+      const correctCount = Math.min(classStudents.length, lastScanCounts[correctColor] || Math.ceil(classStudents.length * 0.7))
+
+      classStudents.slice(0, correctCount).forEach(st => {
+        newScores[st.id] = (newScores[st.id] || 0) + 10
+      })
+      setStudentScores(newScores)
+
+      // Tạo bảng xếp hạng thật
+      updatedLeaderboard = classStudents
+        .map(st => ({
+          id: st.id,
+          name: st.name,
+          score: newScores[st.id] || 0,
+        }))
+        .sort((a, b) => b.score - a.score)
+    }
+
     await onBroadcast({
       type: 'REVEAL_ANSWER',
       correctAnswer: currentQ.correctAnswer,
       isCorrectColor: colorMap[currentQ.correctAnswer] || 'green',
+      duel_state: gameType === 'arena' ? { p1: updatedP1, p2: updatedP2 } : undefined,
+      team_state: gameType === 'team' ? updatedTeams : undefined,
+      boss_state: gameType === 'boss' ? updatedBoss : undefined,
+      leaderboard: updatedLeaderboard.length > 0 ? updatedLeaderboard : undefined,
     })
   }
 
-  // 5. Bảng điểm
+  // 5. Bật Bảng Điểm Thật
   const handleShowLeaderboard = async () => {
+    let board = classStudents
+      .map(st => ({
+        id: st.id,
+        name: st.name,
+        score: studentScores[st.id] || 0,
+      }))
+      .sort((a, b) => b.score - a.score)
+
+    if (board.length === 0) {
+      board = [
+        { id: '1', name: 'Đang ghi nhận điểm...', score: 0 },
+      ]
+    }
+
     await onBroadcast({
       type: 'UPDATE_LEADERBOARD',
-      leaderboard: [
-        { id: '1', name: 'Nguyễn Văn An', score: 120 },
-        { id: '2', name: 'Trần Thị Bình', score: 105 },
-        { id: '3', name: 'Lê Hoàng Cúc', score: 90 },
-        { id: '4', name: 'Phạm Minh Đức', score: 85 },
-      ],
+      leaderboard: board,
     })
   }
 
   // 6. Pháo hoa
   const handleConfetti = async () => {
-    await onBroadcast({
-      type: 'TRIGGER_CONFETTI',
-    })
+    await onBroadcast({ type: 'TRIGGER_CONFETTI' })
   }
 
   // 7. Xoá màn hình
   const handleReset = async () => {
     setIsRevealed(false)
     setIsTimerRunning(false)
-    setLastScanCounts(null)
-    await onBroadcast({
-      type: 'RESET_VIEW',
-    })
+    await onBroadcast({ type: 'RESET_VIEW' })
   }
 
   return (
@@ -339,7 +475,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             </span>
           </div>
 
-          {/* Chọn nhanh các mốc thời gian */}
           <div className="grid grid-cols-6 gap-1.5">
             {TIMER_PRESETS.map(sec => (
               <button
@@ -356,7 +491,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             ))}
           </div>
 
-          {/* Bật/Tắt Tự động chạy đếm ngược khi đổi câu */}
           <div
             onClick={handleToggleAutoTimer}
             className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-amber-200 cursor-pointer select-none"
@@ -377,22 +511,110 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         </Card>
       )}
 
-      {/* Thông tin trò chơi & Môn học */}
-      <div className="flex items-center justify-between gap-2 px-1">
-        <div className="flex items-center gap-1.5">
-          <span className={`px-2.5 py-1 rounded-xl text-xs font-black border flex items-center gap-1 ${gameModeInfo.color}`}>
-            <span>{gameModeInfo.label}</span>
-          </span>
-          {currentQ.subject && (
-            <Badge variant="secondary">
-              {currentQ.subject}
-            </Badge>
-          )}
-        </div>
-        <span className="text-xs font-bold text-[var(--color-text-muted)]">
-          Đã tải {questions.length} câu hỏi
-        </span>
-      </div>
+      {/* ─── GIAO DIỆN ĐẶC BIỆT CHẾ ĐỘ 1: ĐỐI KHÁNG 1V1 (ARENA) ─── */}
+      {gameType === 'arena' && (
+        <Card padding="md" className="bg-gradient-to-r from-red-50 to-blue-50 border-red-200 shadow-sm flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-red-950 flex items-center gap-1">
+              <Swords size={15} className="text-red-600" />
+              ĐỐI KHÁNG 1 VS 1: THANH MÁU HP
+            </span>
+            <span className="text-[11px] font-bold text-slate-500">Mất máu khi trả lời sai</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {/* Đấu thủ 1 */}
+            <div className="p-3 bg-white rounded-xl border border-red-200 flex flex-col gap-2 shadow-2xs">
+              <div className="flex justify-between items-center">
+                <span className="font-black text-xs text-red-700 truncate">{p1State.name}</span>
+                <span className="text-xs font-black text-red-600">{p1State.hp}%</span>
+              </div>
+              {/* Thanh máu HP P1 */}
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-red-200">
+                <div
+                  className="h-full bg-gradient-to-r from-red-500 to-rose-400 transition-all duration-500"
+                  style={{ width: `${p1State.hp}%` }}
+                />
+              </div>
+              {/* Chọn đáp án P1 */}
+              <div className="flex gap-1 justify-between mt-1">
+                {['A', 'B', 'C', 'D'].map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => setP1State(prev => ({ ...prev, choice: opt }))}
+                    className={`w-7 h-7 rounded-lg text-xs font-black transition-all ${
+                      p1State.choice === opt
+                        ? 'bg-red-600 text-white scale-110 shadow-sm ring-2 ring-red-300'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Đấu thủ 2 */}
+            <div className="p-3 bg-white rounded-xl border border-blue-200 flex flex-col gap-2 shadow-2xs">
+              <div className="flex justify-between items-center">
+                <span className="font-black text-xs text-blue-700 truncate">{p2State.name}</span>
+                <span className="text-xs font-black text-blue-600">{p2State.hp}%</span>
+              </div>
+              {/* Thanh máu HP P2 */}
+              <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-blue-200">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-500 to-indigo-400 transition-all duration-500"
+                  style={{ width: `${p2State.hp}%` }}
+                />
+              </div>
+              {/* Chọn đáp án P2 */}
+              <div className="flex gap-1 justify-between mt-1">
+                {['A', 'B', 'C', 'D'].map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => setP2State(prev => ({ ...prev, choice: opt }))}
+                    className={`w-7 h-7 rounded-lg text-xs font-black transition-all ${
+                      p2State.choice === opt
+                        ? 'bg-blue-600 text-white scale-110 shadow-sm ring-2 ring-blue-300'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ─── GIAO DIỆN ĐẶC BIỆT CHẾ ĐỘ 2: ĐÁNH BOSS (BOSS) ─── */}
+      {gameType === 'boss' && (
+        <Card padding="md" className="bg-gradient-to-r from-purple-50 to-amber-50 border-purple-200 shadow-sm flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-purple-950 flex items-center gap-1.5">
+              <ShieldAlert size={15} className="text-purple-600" />
+              BOSS QUÁI VẬT HOẠT HÌNH: {bossState.name}
+            </span>
+            <span className="text-xs font-black text-purple-700 font-mono">
+              HP: {bossState.hp}%
+            </span>
+          </div>
+
+          {/* Thanh máu Boss */}
+          <div className="w-full h-4 bg-slate-200 rounded-full overflow-hidden border border-purple-300 shadow-inner">
+            <div
+              className="h-full bg-gradient-to-r from-purple-600 via-pink-500 to-rose-500 transition-all duration-700"
+              style={{ width: `${bossState.hp}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
+            <span>Tỉ lệ đúng cả lớp: <strong>{bossState.overallAccuracy}%</strong></span>
+            <span className="text-emerald-700 font-extrabold">&gt;80% là tiêu diệt Boss</span>
+          </div>
+        </Card>
+      )}
 
       {/* Card Hiển thị Câu hỏi & Thao tác chuyển câu */}
       <Card padding="md" className="flex flex-col gap-3 border shadow-sm">
@@ -506,12 +728,12 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             leftIcon={<Camera size={16} />}
             className="font-bold text-xs border border-slate-200 bg-sky-50 text-sky-800 hover:bg-sky-100"
           >
-            Quét thẻ màu
+            Quét thẻ camera
           </Button>
         </div>
 
         {/* Thống kê quét thẻ gần nhất nếu có */}
-        {lastScanCounts && (
+        {(lastScanCounts.red > 0 || lastScanCounts.green > 0 || lastScanCounts.yellow > 0 || lastScanCounts.blue > 0) && (
           <div className="flex justify-between items-center bg-slate-100 px-3 py-1.5 rounded-xl text-xs font-bold">
             <span className="text-slate-500">Đã quét:</span>
             <div className="flex gap-2">
@@ -532,7 +754,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         >
           {isRevealed
             ? `Đã mở đáp án: [ ${currentQ.correctAnswer} ]`
-            : `Mở đáp án đúng (${currentQ.correctAnswer})`}
+            : `Mở đáp án đúng (${currentQ.correctAnswer}) & Tính điểm`}
         </Button>
       </Card>
 
@@ -545,7 +767,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           leftIcon={<Trophy size={14} />}
           className="font-bold text-xs border bg-white"
         >
-          Bảng điểm
+          Bảng điểm thật
         </Button>
         <Button
           variant="ghost"

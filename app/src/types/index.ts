@@ -98,7 +98,7 @@ export type Question = {
   created_at: string
 }
 
-export type GameType = 'individual' | '1v1' | 'team' | 'collective'
+export type GameType = 'individual' | '1v1' | 'team' | 'collective' | 'classic' | 'arena' | 'boss'
 export type GameStatus = 'waiting' | 'active' | 'finished'
 
 export type GameSession = {
