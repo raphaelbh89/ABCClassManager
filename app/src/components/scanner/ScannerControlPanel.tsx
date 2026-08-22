@@ -1,7 +1,8 @@
 'use client'
 // src/components/scanner/ScannerControlPanel.tsx
-// Bảng Điều Khiển Mobile Đa Chế Độ: 1v1 Thanh Máu, Tổ vs Tổ, Đánh Boss, và Tính Điểm Thật
-import { useState, useEffect, useCallback } from 'react'
+// Bảng Điều Khiển Mobile Đa Chế Độ: 1v1 Thanh Máu, Tổ vs Tổ, Đánh Boss, Popup Vinh Danh & Thưởng Điểm
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import Link from 'next/link'
 import { Button } from '@/components/common/Button'
 import { Card } from '@/components/common/Card'
 import { Badge } from '@/components/common/Badge'
@@ -24,10 +25,9 @@ import {
   ShieldAlert,
   Sliders,
   Zap,
-  Flame,
-  Shield,
-  Heart,
-  Dices,
+  Star,
+  Home,
+  X,
 } from 'lucide-react'
 import type { RealtimeEvent, DuelPlayerState, TeamGroupState, BossFightState } from '@/services/sync'
 
@@ -63,6 +63,8 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
   const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [isRevealed, setIsRevealed] = useState(false)
   const [isScannerOpen, setIsScannerOpen] = useState(false)
+  const [showWinnerModal, setShowWinnerModal] = useState(false)
+  const [isScoreAwarded, setIsScoreAwarded] = useState(false)
   const [lastScanCounts, setLastScanCounts] = useState<{ red: number; green: number; yellow: number; blue: number }>({
     red: 0, green: 0, yellow: 0, blue: 0,
   })
@@ -72,14 +74,14 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
   const [autoStartTimer, setAutoStartTimer] = useState<boolean>(true)
   const [showSettings, setShowSettings] = useState<boolean>(false)
 
-  // ─── STATE CHẾ ĐỘ 1: ĐỐI KHÁNG 1V1 (ARENA) ───
+  // State 1v1
   const [p1State, setP1State] = useState<DuelPlayerState>({ id: 'p1', name: 'Đấu thủ 1', hp: 100, choice: '' })
   const [p2State, setP2State] = useState<DuelPlayerState>({ id: 'p2', name: 'Đấu thủ 2', hp: 100, choice: '' })
 
-  // ─── STATE CHẾ ĐỘ 2: TỔ VS TỔ (TEAM) ───
+  // State Tổ vs Tổ
   const [teamsState, setTeamsState] = useState<TeamGroupState[]>(DEFAULT_TEAMS)
 
-  // ─── STATE CHẾ ĐỘ 3: ĐÁNH BOSS (BOSS) ───
+  // State Đánh Boss
   const [bossState, setBossState] = useState<BossFightState>({
     name: 'Rồng Lửa Hắc Ám',
     avatar: '🐉',
@@ -93,11 +95,10 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
   const [totalClassCorrect, setTotalClassCorrect] = useState(0)
   const [totalClassResponses, setTotalClassResponses] = useState(0)
 
-  // ─── STATE CHẾ ĐỘ 4: BẢNG ĐIỂM THỰC TẾ (CLASSIC / ALL) ───
+  // State Bảng điểm thật
   const [studentScores, setStudentScores] = useState<Record<string, number>>({})
   const [classStudents, setClassStudents] = useState<any[]>([])
 
-  // Load cấu hình từ localStorage
   useEffect(() => {
     try {
       const savedDuration = localStorage.getItem('classmanager_timer_duration')
@@ -118,7 +119,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     try { localStorage.setItem('classmanager_auto_timer', String(nextVal)) } catch {}
   }
 
-  // Tải dữ liệu Game Session thật từ database theo roomCode
   const fetchSessionData = useCallback(async () => {
     if (!roomCode) return
     setIsLoadingSession(true)
@@ -128,7 +128,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         const session = await res.json()
         setGameSession(session)
 
-        // Load học sinh trong lớp
         if (session.class_id) {
           const stRes = await fetch(`/api/students?classId=${encodeURIComponent(session.class_id)}`)
           if (stRes.ok) {
@@ -137,7 +136,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           }
         }
 
-        // Khởi tạo 1v1 nếu có
         if (session.template?.duel_players) {
           const { p1, p2 } = session.template.duel_players
           setP1State({ id: p1?.id || 'p1', name: p1?.name || 'Đấu thủ 1', hp: 100, choice: '' })
@@ -189,6 +187,8 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           setCurrentIdx(0)
           setIsRevealed(false)
           setIsTimerRunning(false)
+          setShowWinnerModal(false)
+          setIsScoreAwarded(false)
         }
       }
     } catch (err) {
@@ -211,15 +211,103 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
 
   const gameType = gameSession?.game_type || 'classic'
 
-  // 1. Đẩy câu hỏi lên màn chiếu TV
+  // Tính toán người thắng
+  const winnerInfo = useMemo(() => {
+    if (gameType === 'arena') {
+      if (p1State.hp > p2State.hp) {
+        return {
+          title: `🏆 CHIẾN THẮNG 1 VS 1!`,
+          name: p1State.name,
+          id: p1State.id,
+          detail: `Chiến thắng với ${p1State.hp}% HP (đối thủ còn ${p2State.hp}% HP)`,
+          icon: '🥇',
+        }
+      } else if (p2State.hp > p1State.hp) {
+        return {
+          title: `🏆 CHIẾN THẮNG 1 VS 1!`,
+          name: p2State.name,
+          id: p2State.id,
+          detail: `Chiến thắng với ${p2State.hp}% HP (đối thủ còn ${p1State.hp}% HP)`,
+          icon: '🥇',
+        }
+      } else {
+        return {
+          title: `🤝 KẾT QUẢ HÒA!`,
+          name: `${p1State.name} & ${p2State.name}`,
+          id: p1State.id,
+          detail: `Cả 2 bạn đều giữ được ${p1State.hp}% HP!`,
+          icon: '🌟',
+        }
+      }
+    }
+
+    if (gameType === 'boss') {
+      const isWon = bossState.isDefeated || bossState.overallAccuracy >= 80 || bossState.hp === 0
+      if (isWon) {
+        return {
+          title: `🎉 CẢ LỚP ĐÃ HẠ GỤC BOSS!`,
+          name: `Toàn Thể Lớp Học`,
+          id: 'all',
+          detail: `Tỉ lệ trả lời đúng đạt ${bossState.overallAccuracy}%! Boss đã bị tiêu diệt!`,
+          icon: '🐉💥',
+        }
+      } else {
+        return {
+          title: `🐲 BOSS ĐÃ TẨU THOÁT!`,
+          name: `Hãy Cố Gắng Lần Sau`,
+          id: 'none',
+          detail: `Tỉ lệ đúng đạt ${bossState.overallAccuracy}%. Cần đạt từ 80% để diệt Boss.`,
+          icon: '⚡',
+        }
+      }
+    }
+
+    return {
+      title: `🏆 VINH DANH TIẾT HỌC`,
+      name: `Các Bạn Học Sinh Xuất Sắc`,
+      id: 'top',
+      detail: `Chúc mừng cả lớp đã hoàn thành bài học!`,
+      icon: '🏆',
+    }
+  }, [gameType, p1State, p2State, bossState])
+
+  // Cộng điểm thưởng RPG
+  const handleAwardScore = async () => {
+    if (isScoreAwarded || !winnerInfo.id || winnerInfo.id === 'none') return
+    try {
+      if (winnerInfo.id !== 'all' && winnerInfo.id !== 'top') {
+        const critRes = await fetch(`/api/evaluations?type=criteria`)
+        const criteria = await critRes.json()
+        const critId = criteria?.[0]?.id
+
+        if (critId) {
+          await fetch('/api/evaluations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              student_id: winnerInfo.id,
+              criteria_id: critId,
+              score: 10,
+              note: `⭐ Chiến thắng trò chơi: ${winnerInfo.title}`,
+              session_type: 'game',
+            }),
+          })
+        }
+      }
+      setIsScoreAwarded(true)
+      await onBroadcast({ type: 'TRIGGER_CONFETTI' })
+    } catch {}
+  }
+
+  // 1. Đẩy câu hỏi lên TV
   const sendQuestionToTV = async (targetIndex: number) => {
     const q = questions[targetIndex]
     if (!q) return
 
     setIsRevealed(false)
     setIsTimerRunning(false)
+    setShowWinnerModal(false)
 
-    // Reset lựa chọn câu hiện tại của 1v1
     setP1State(prev => ({ ...prev, choice: '', isCorrect: undefined }))
     setP2State(prev => ({ ...prev, choice: '', isCorrect: undefined }))
 
@@ -266,7 +354,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     }
   }
 
-  // 2. Kích hoạt đếm ngược thủ công
   const handleStartTimer = async (seconds = countdownSeconds) => {
     setIsTimerRunning(true)
     await onBroadcast({
@@ -275,7 +362,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 3. Nhận kết quả quét thẻ từ camera
   const handleScanConfirm = async (counts: { red: number; green: number; yellow: number; blue: number }) => {
     setLastScanCounts(counts)
     await onBroadcast({
@@ -284,7 +370,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 4. Mở đáp án & TÍNH ĐIỂM / THANH MÁU THỰC TẾ
+  // 4. Mở đáp án & TÍNH ĐIỂM
   const handleRevealAnswer = async () => {
     setIsRevealed(true)
     const colorMap: Record<string, string> = { A: 'red', B: 'green', C: 'yellow', D: 'blue' }
@@ -295,9 +381,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     let updatedP2 = { ...p2State }
     let updatedTeams = [...teamsState]
     let updatedBoss = { ...bossState }
-    let updatedLeaderboard: any[] = []
 
-    // ─── A. XỬ LÝ 1V1 (ARENA) ───
     if (gameType === 'arena') {
       const p1Correct = p1State.choice === currentQ.correctAnswer
       const p2Correct = p2State.choice === currentQ.correctAnswer
@@ -312,7 +396,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       setP2State(updatedP2)
     }
 
-    // ─── B. XỬ LÝ ĐÁNH BOSS (BOSS FIGHT) ───
     if (gameType === 'boss') {
       const correctColor = colorMap[currentQ.correctAnswer] as keyof typeof lastScanCounts
       const correctCount = lastScanCounts[correctColor] || 0
@@ -329,7 +412,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
 
       const overallAcc = nextTotalResponses > 0 ? Math.round((nextTotalCorrect / nextTotalResponses) * 100) : 100
 
-      // Nếu là câu cuối cùng hoặc hết máu: Kiểm tra xem có diệt được Boss (tỉ lệ >= 80%)
       const isLastQ = currentIdx === questions.length - 1
       const isDefeated = (isLastQ && overallAcc >= 80) || nextBossHp <= 0
 
@@ -344,24 +426,17 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       setBossState(updatedBoss)
     }
 
-    // ─── C. XỬ LÝ TỔ VS TỔ (TEAM) ───
     if (gameType === 'team') {
-      updatedTeams = teamsState.map((t, idx) => {
-        // Tỉ lệ điểm ngẫu nhiên thực tế theo tổ
-        const teamScoreAdd = 10
-        return {
-          ...t,
-          score: t.score + teamScoreAdd,
-          hp: Math.max(0, t.hp - (idx % 2 === 1 ? damagePerMiss / 2 : 0)),
-        }
-      })
+      updatedTeams = teamsState.map((t, idx) => ({
+        ...t,
+        score: t.score + 10,
+        hp: Math.max(0, t.hp - (idx % 2 === 1 ? damagePerMiss / 2 : 0)),
+      }))
       setTeamsState(updatedTeams)
     }
 
-    // ─── D. XỬ LÝ BẢNG ĐIỂM THẬT CHO TỪNG HỌC SINH ───
     if (classStudents.length > 0) {
       const newScores = { ...studentScores }
-      // Cộng 10 điểm cho các bạn trả lời đúng ở lượt này
       const correctColor = colorMap[currentQ.correctAnswer] as keyof typeof lastScanCounts
       const correctCount = Math.min(classStudents.length, lastScanCounts[correctColor] || Math.ceil(classStudents.length * 0.7))
 
@@ -369,15 +444,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         newScores[st.id] = (newScores[st.id] || 0) + 10
       })
       setStudentScores(newScores)
-
-      // Tạo bảng xếp hạng thật
-      updatedLeaderboard = classStudents
-        .map(st => ({
-          id: st.id,
-          name: st.name,
-          score: newScores[st.id] || 0,
-        }))
-        .sort((a, b) => b.score - a.score)
     }
 
     await onBroadcast({
@@ -388,9 +454,13 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       team_state: gameType === 'team' ? updatedTeams : undefined,
       boss_state: gameType === 'boss' ? updatedBoss : undefined,
     })
+
+    // Tự động gợi ý mở popup vinh danh ở câu cuối
+    if (currentIdx === questions.length - 1) {
+      setTimeout(() => setShowWinnerModal(true), 800)
+    }
   }
 
-  // 5. Bật Bảng Điểm Thật
   const handleShowLeaderboard = async () => {
     let board = classStudents
       .map(st => ({
@@ -401,9 +471,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       .sort((a, b) => b.score - a.score)
 
     if (board.length === 0) {
-      board = [
-        { id: '1', name: 'Đang ghi nhận điểm...', score: 0 },
-      ]
+      board = [{ id: '1', name: 'Đang ghi nhận điểm...', score: 0 }]
     }
 
     await onBroadcast({
@@ -412,17 +480,19 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     })
   }
 
-  // 6. Pháo hoa
   const handleConfetti = async () => {
     await onBroadcast({ type: 'TRIGGER_CONFETTI' })
   }
 
-  // 7. Xoá màn hình
   const handleReset = async () => {
     setIsRevealed(false)
     setIsTimerRunning(false)
+    setShowWinnerModal(false)
+    setIsScoreAwarded(false)
     await onBroadcast({ type: 'RESET_VIEW' })
   }
+
+  const isLastQuestion = currentIdx === questions.length - 1
 
   return (
     <div className="max-w-md mx-auto flex flex-col gap-3 pb-16">
@@ -460,6 +530,51 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           </button>
         </div>
       </div>
+
+      {/* ─── BANNER KẾT THÚC & VINH DANH CHIẾN THẮNG ─── */}
+      {(isLastQuestion && isRevealed) && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 border-2 border-amber-500 shadow-md flex flex-col gap-3 animate-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{winnerInfo.icon}</span>
+              <div>
+                <span className="text-[10px] font-black uppercase text-amber-950 block tracking-wider">KẾT THÚC CUỘC THI</span>
+                <span className="text-sm font-black text-slate-950 truncate block">{winnerInfo.name}</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowWinnerModal(true)}
+              className="px-3 py-1.5 rounded-xl bg-slate-950 text-white text-xs font-black shadow-sm flex items-center gap-1"
+            >
+              <Trophy size={14} />
+              <span>Vinh danh</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              size="sm"
+              onClick={handleAwardScore}
+              disabled={isScoreAwarded}
+              leftIcon={<Star size={15} className="text-amber-500 fill-amber-500" />}
+              className="bg-white text-slate-950 font-black text-xs shadow-xs"
+            >
+              {isScoreAwarded ? '✓ Đã cộng 10 Sao' : '+10 Điểm Thưởng'}
+            </Button>
+
+            <Link href="/game" className="w-full">
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={<Home size={15} />}
+                className="w-full font-black text-xs bg-amber-950 text-white hover:bg-slate-900"
+              >
+                Quay lại phần mềm
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ─── BẢNG CÀI ĐẶT THỜI GIAN ĐẾM NGƯỢC ─── */}
       {showSettings && (
@@ -510,7 +625,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         </Card>
       )}
 
-      {/* ─── GIAO DIỆN ĐẶC BIỆT CHẾ ĐỘ 1: ĐỐI KHÁNG 1V1 (ARENA) ─── */}
+      {/* ─── GIAO DIỆN 1V1 (ARENA) ─── */}
       {gameType === 'arena' && (
         <Card padding="md" className="bg-gradient-to-r from-red-50 to-blue-50 border-red-200 shadow-sm flex flex-col gap-3">
           <div className="flex items-center justify-between">
@@ -528,14 +643,12 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
                 <span className="font-black text-xs text-red-700 truncate">{p1State.name}</span>
                 <span className="text-xs font-black text-red-600">{p1State.hp}%</span>
               </div>
-              {/* Thanh máu HP P1 */}
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-red-200">
                 <div
                   className="h-full bg-gradient-to-r from-red-500 to-rose-400 transition-all duration-500"
                   style={{ width: `${p1State.hp}%` }}
                 />
               </div>
-              {/* Chọn đáp án P1 */}
               <div className="flex gap-1 justify-between mt-1">
                 {['A', 'B', 'C', 'D'].map(opt => (
                   <button
@@ -559,14 +672,12 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
                 <span className="font-black text-xs text-blue-700 truncate">{p2State.name}</span>
                 <span className="text-xs font-black text-blue-600">{p2State.hp}%</span>
               </div>
-              {/* Thanh máu HP P2 */}
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-blue-200">
                 <div
                   className="h-full bg-gradient-to-r from-blue-500 to-indigo-400 transition-all duration-500"
                   style={{ width: `${p2State.hp}%` }}
                 />
               </div>
-              {/* Chọn đáp án P2 */}
               <div className="flex gap-1 justify-between mt-1">
                 {['A', 'B', 'C', 'D'].map(opt => (
                   <button
@@ -583,34 +694,6 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
                 ))}
               </div>
             </div>
-          </div>
-        </Card>
-      )}
-
-      {/* ─── GIAO DIỆN ĐẶC BIỆT CHẾ ĐỘ 2: ĐÁNH BOSS (BOSS) ─── */}
-      {gameType === 'boss' && (
-        <Card padding="md" className="bg-gradient-to-r from-purple-50 to-amber-50 border-purple-200 shadow-sm flex flex-col gap-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-black text-purple-950 flex items-center gap-1.5">
-              <ShieldAlert size={15} className="text-purple-600" />
-              BOSS QUÁI VẬT HOẠT HÌNH: {bossState.name}
-            </span>
-            <span className="text-xs font-black text-purple-700 font-mono">
-              HP: {bossState.hp}%
-            </span>
-          </div>
-
-          {/* Thanh máu Boss */}
-          <div className="w-full h-4 bg-slate-200 rounded-full overflow-hidden border border-purple-300 shadow-inner">
-            <div
-              className="h-full bg-gradient-to-r from-purple-600 via-pink-500 to-rose-500 transition-all duration-700"
-              style={{ width: `${bossState.hp}%` }}
-            />
-          </div>
-
-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
-            <span>Tỉ lệ đúng cả lớp: <strong>{bossState.overallAccuracy}%</strong></span>
-            <span className="text-emerald-700 font-extrabold">&gt;80% là tiêu diệt Boss</span>
           </div>
         </Card>
       )}
@@ -788,12 +871,79 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         </Button>
       </div>
 
+      {/* Link quay lại phần mềm ở dưới */}
+      <div className="text-center pt-2">
+        <Link href="/game" className="text-xs font-bold text-slate-500 hover:text-[var(--color-primary)] inline-flex items-center gap-1">
+          <Home size={14} />
+          <span>Quay lại Trung tâm trò chơi</span>
+        </Link>
+      </div>
+
       {/* Modal Camera quét thẻ thật */}
       <CardScannerModal
         isOpen={isScannerOpen}
         onClose={() => setIsScannerOpen(false)}
         onConfirm={handleScanConfirm}
       />
+
+      {/* Modal Vinh danh trên mobile */}
+      {showWinnerModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-amber-300 shadow-2xl flex flex-col items-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-amber-100 border-2 border-amber-400 flex items-center justify-center text-3xl shadow-inner animate-bounce">
+              {winnerInfo.icon}
+            </div>
+
+            <div>
+              <span className="text-[10px] font-black uppercase text-amber-800 tracking-wider block mb-1">
+                {winnerInfo.title}
+              </span>
+              <h3 className="text-xl font-black text-slate-900">
+                {winnerInfo.name}
+              </h3>
+              <p className="text-xs font-bold text-slate-500 mt-1">
+                {winnerInfo.detail}
+              </p>
+            </div>
+
+            <div className="w-full flex flex-col gap-2 pt-2 border-t border-slate-100">
+              {winnerInfo.id !== 'none' && (
+                <Button
+                  size="md"
+                  onClick={handleAwardScore}
+                  disabled={isScoreAwarded}
+                  leftIcon={<Star size={16} className="text-amber-500 fill-amber-500" />}
+                  className="w-full bg-amber-400 text-slate-950 font-black shadow-sm"
+                >
+                  {isScoreAwarded ? '✓ Đã cộng 10 Sao' : '+10 Điểm Thưởng Sổ Điểm'}
+                </Button>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowWinnerModal(false)}
+                  className="font-bold text-xs"
+                >
+                  Đóng
+                </Button>
+
+                <Link href="/game" className="w-full">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<Home size={14} />}
+                    className="w-full font-bold text-xs bg-slate-900 text-white"
+                  >
+                    Về phần mềm
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

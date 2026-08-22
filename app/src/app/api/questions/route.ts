@@ -46,10 +46,26 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { action } = body
 
-    // ─── Tạo tự động bộ câu hỏi theo môn & số lượng ───
-    if (action === 'generate_set') {
-      const { subject = 'Toán học', count = 10, question_type = 'mcq' } = body
-      const createdQuestions = generateDynamicQuizSet(subject, Number(count), question_type)
+    // ─── Tạo tự động bộ câu hỏi theo Chủ đề / AI Prompt (Gemini Free, ChatGPT, Groq) ───
+    if (action === 'generate_set' || action === 'ai_generate') {
+      const {
+        topic = '',
+        subject = 'Toán học',
+        count = 5,
+        question_type = 'mcq',
+        provider = 'local',
+        apiKey = '',
+      } = body
+
+      const { generateQuestionsWithAI } = await import('@/services/aiGenerator')
+      const createdQuestions = await generateQuestionsWithAI({
+        topic: topic.trim(),
+        subject,
+        count: Number(count) || 5,
+        question_type,
+        provider,
+        apiKey,
+      })
 
       const insertStmt = db.prepare(`
         INSERT INTO questions (id, teacher_id, subject, content, question_type, options, correct_answer, duration_seconds)
@@ -72,7 +88,7 @@ export async function POST(req: Request) {
       })
       tx(createdQuestions)
 
-      return NextResponse.json({ success: true, count: createdQuestions.length })
+      return NextResponse.json({ success: true, count: createdQuestions.length, questions: createdQuestions })
     }
 
     // ─── Tạo 1 câu hỏi đơn lẻ ───

@@ -1,10 +1,13 @@
 'use client'
 // src/components/display/DisplayScreen.tsx
-// Màn Hình Chiếu TV Tương Tác: 1v1 Thanh Máu Đối Kháng, Đánh Boss Hoạt Hình, Tổ vs Tổ & Bảng Điểm Thật
+// Màn Hình Chiếu TV Tương Tác: 1v1 Thanh Máu Đối Kháng, Đánh Boss Hoạt Hình, Popup Vinh Danh & Thưởng Điểm
 import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import confetti from 'canvas-confetti'
 import { Card } from '@/components/common/Card'
 import { Badge } from '@/components/common/Badge'
+import { Button } from '@/components/common/Button'
 import { QRCodeCanvas } from '@/components/common/QRCodeCanvas'
 import {
   Trophy,
@@ -21,6 +24,10 @@ import {
   Heart,
   Crown,
   Zap,
+  Star,
+  Home,
+  RotateCcw,
+  CheckCircle2,
 } from 'lucide-react'
 import type { RealtimeEvent, DuelPlayerState, TeamGroupState, BossFightState } from '@/services/sync'
 
@@ -37,6 +44,7 @@ const OPTION_COLORS: Record<string, { bg: string; border: string; text: string; 
 }
 
 export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
+  const router = useRouter()
   const [currentQuestion, setCurrentQuestion] = useState<any | null>(null)
   const [questionIndex, setQuestionIndex] = useState(1)
   const [totalQuestions, setTotalQuestions] = useState(5)
@@ -46,7 +54,9 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
   const [scanCounts, setScanCounts] = useState<{ red: number; green: number; yellow: number; blue: number } | null>(null)
   const [leaderboard, setLeaderboard] = useState<any[] | null>(null)
   const [showQRModal, setShowQRModal] = useState(false)
+  const [showWinnerModal, setShowWinnerModal] = useState(false)
   const [originUrl, setOriginUrl] = useState('')
+  const [isScoreAwarded, setIsScoreAwarded] = useState(false)
 
   // Game States
   const [gameType, setGameType] = useState<'classic' | 'arena' | 'team' | 'boss'>('classic')
@@ -77,6 +87,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         setRevealedAnswer(null)
         setScanCounts(null)
         setLeaderboard(null)
+        setShowWinnerModal(false)
 
         if (lastEvent.game_type) setGameType(lastEvent.game_type)
         if (lastEvent.duel_state) setDuelState(lastEvent.duel_state)
@@ -106,7 +117,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
 
       case 'REVEAL_ANSWER':
         setRevealedAnswer(lastEvent.correctAnswer)
-        setLeaderboard(null) // Đảm bảo luôn hiện rõ màn hình câu hỏi và ô đáp án đúng
+        setLeaderboard(null) // Luôn ưu tiên hiển thị ô đáp án đúng
         if (lastEvent.duel_state) setDuelState(lastEvent.duel_state)
         if (lastEvent.team_state) setTeamState(lastEvent.team_state)
         if (lastEvent.boss_state) setBossState(lastEvent.boss_state)
@@ -116,6 +127,14 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
           spread: 75,
           origin: { y: 0.6 },
         })
+
+        // Tự động bật Popup Vinh Danh khi ở câu cuối cùng hoặc khi 1 bên hết máu
+        if (lastEvent.duel_state) {
+          const { p1, p2 } = lastEvent.duel_state
+          if (p1.hp === 0 || p2.hp === 0) {
+            setTimeout(() => setShowWinnerModal(true), 1200)
+          }
+        }
         break
 
       case 'UPDATE_GAME_STATE':
@@ -127,7 +146,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
 
       case 'TRIGGER_CONFETTI':
         confetti({
-          particleCount: 130,
+          particleCount: 150,
           spread: 100,
           origin: { y: 0.5 },
         })
@@ -143,6 +162,8 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         setTimeLeft(null)
         setScanCounts(null)
         setLeaderboard(null)
+        setShowWinnerModal(false)
+        setIsScoreAwarded(false)
         break
     }
   }, [lastEvent])
@@ -161,6 +182,114 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
     }, 1000)
     return () => clearInterval(timer)
   }, [timeLeft])
+
+  // Tính toán người thắng cuộc
+  const winnerInfo = useMemo(() => {
+    if (gameType === 'arena' && duelState) {
+      const { p1, p2 } = duelState
+      if (p1.hp > p2.hp) {
+        return {
+          title: `🏆 CHIẾN THẮNG 1 VS 1!`,
+          name: p1.name,
+          id: p1.id,
+          detail: `Chiến thắng với ${p1.hp}% HP (đối thủ còn ${p2.hp}% HP)`,
+          icon: '🥇',
+          color: 'from-amber-400 via-amber-300 to-yellow-400',
+        }
+      } else if (p2.hp > p1.hp) {
+        return {
+          title: `🏆 CHIẾN THẮNG 1 VS 1!`,
+          name: p2.name,
+          id: p2.id,
+          detail: `Chiến thắng với ${p2.hp}% HP (đối thủ còn ${p1.hp}% HP)`,
+          icon: '🥇',
+          color: 'from-blue-400 via-indigo-300 to-blue-500',
+        }
+      } else {
+        return {
+          title: `🤝 KẾT QUẢ HÒA!`,
+          name: `${p1.name} & ${p2.name}`,
+          id: p1.id,
+          detail: `Cả hai đấu thủ đều bảo toàn được ${p1.hp}% HP!`,
+          icon: '🌟',
+          color: 'from-purple-400 via-indigo-300 to-purple-500',
+        }
+      }
+    }
+
+    if (gameType === 'boss' && bossState) {
+      const isWon = bossState.isDefeated || bossState.overallAccuracy >= 80 || bossState.hp === 0
+      if (isWon) {
+        return {
+          title: `🎉 CẢ LỚP ĐÃ HẠ GỤC BOSS THÀNH CÔNG!`,
+          name: `Toàn Thể Lớp Học`,
+          id: 'all',
+          detail: `Tỉ lệ trả lời chính xác đạt ${bossState.overallAccuracy}%! Boss đã bị tiêu diệt hoàn toàn!`,
+          icon: '🐉💥',
+          color: 'from-emerald-400 via-teal-300 to-emerald-500',
+        }
+      } else {
+        return {
+          title: `🐲 BOSS ĐÃ TẨU THOÁT!`,
+          name: `Hãy Cố Gắng Lần Sau`,
+          id: 'none',
+          detail: `Tỉ lệ trả lời đúng đạt ${bossState.overallAccuracy}%. Cần đạt từ 80% để hạ gục Boss!`,
+          icon: '⚡',
+          color: 'from-rose-400 via-orange-300 to-rose-500',
+        }
+      }
+    }
+
+    if (gameType === 'team' && teamState) {
+      const sorted = [...teamState].sort((a, b) => b.score - a.score || b.hp - a.hp)
+      const top = sorted[0]
+      return {
+        title: `🏆 TỔ VÔ ĐỊCH!`,
+        name: top?.name || 'Tổ 1',
+        id: top?.id || 'team-1',
+        detail: `Dẫn đầu với ${top?.score || 0} điểm và ${top?.hp || 0}% HP!`,
+        icon: '🛡️🥇',
+        color: 'from-amber-400 via-orange-300 to-yellow-400',
+      }
+    }
+
+    return {
+      title: `🏆 VINH DANH TIẾT HỌC`,
+      name: `Các Bạn Học Sinh Xuất Sắc`,
+      id: 'top',
+      detail: `Chúc mừng cả lớp đã hoàn thành xuất sắc các câu hỏi!`,
+      icon: '🏆',
+      color: 'from-amber-400 via-amber-300 to-yellow-400',
+    }
+  }, [gameType, duelState, bossState, teamState])
+
+  // Cộng điểm thưởng RPG
+  const handleAwardScore = async () => {
+    if (isScoreAwarded || !winnerInfo.id || winnerInfo.id === 'none') return
+    try {
+      if (winnerInfo.id !== 'all' && winnerInfo.id !== 'top') {
+        const critRes = await fetch(`/api/evaluations?type=criteria`)
+        const criteria = await critRes.json()
+        const critId = criteria?.[0]?.id
+
+        if (critId) {
+          await fetch('/api/evaluations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              student_id: winnerInfo.id,
+              criteria_id: critId,
+              score: 10,
+              note: `⭐ Chiến thắng trò chơi: ${winnerInfo.title}`,
+              session_type: 'game',
+            }),
+          })
+        }
+      }
+      setIsScoreAwarded(true)
+      confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 } })
+    } catch {}
+  }
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -230,18 +359,29 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
           </div>
         </div>
 
-        {/* Mã Phòng & Nút Quét QR */}
-        <div className="flex items-center gap-3">
+        {/* Nút Vinh Danh & Mã Phòng & Nút Quét QR */}
+        <div className="flex items-center gap-2.5">
+          {/* Nút mở nhanh Popup Vinh Danh */}
+          <button
+            onClick={() => setShowWinnerModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs shadow-md transition-all cursor-pointer"
+            title="Mở bảng vinh danh chiến thắng"
+          >
+            <Trophy size={16} />
+            <span>Vinh danh</span>
+          </button>
+
+          {/* Nút bấm mở QR Code */}
           <button
             onClick={() => setShowQRModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-[var(--color-border)] shadow-sm hover:border-[var(--color-primary)] hover:bg-slate-50 transition-all cursor-pointer group"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-white border border-[var(--color-border)] shadow-sm hover:border-[var(--color-primary)] hover:bg-slate-50 transition-all cursor-pointer group"
             title="Quét mã QR bằng điện thoại để điều khiển"
           >
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
-              <QrCode size={18} />
+            <div className="w-7 h-7 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+              <QrCode size={16} />
             </div>
             <div className="text-left">
-              <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
+              <span className="text-[9px] text-slate-500 font-bold block uppercase tracking-wider">
                 Quét QR Mobile
               </span>
               <span className="text-xs font-extrabold text-[var(--color-primary)]">
@@ -250,11 +390,12 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
             </div>
           </button>
 
-          <div className="bg-white px-5 py-2 rounded-2xl border border-[var(--color-border)] shadow-sm text-right">
-            <span className="text-[10px] text-[var(--color-text-muted)] font-bold block uppercase tracking-wider">
+          {/* Badge Mã Phòng */}
+          <div className="bg-white px-4 py-2 rounded-2xl border border-[var(--color-border)] shadow-sm text-right">
+            <span className="text-[9px] text-[var(--color-text-muted)] font-bold block uppercase tracking-wider">
               Mã phòng kết nối
             </span>
-            <span className="text-2xl font-black tracking-widest text-[var(--color-accent)] font-mono">
+            <span className="text-xl font-black tracking-widest text-[var(--color-accent)] font-mono">
               {roomCode}
             </span>
           </div>
@@ -387,13 +528,21 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
             </div>
           </div>
         ) : currentQuestion ? (
-          // Màn hình hiển thị câu hỏi
+          // Màn hình hiển thị câu hỏi & ĐÁP ÁN ĐÚNG
           <div className="max-w-5xl mx-auto w-full flex flex-col gap-5 relative">
             {/* Header Câu hỏi */}
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[var(--color-border)] shadow-lg text-center relative overflow-hidden">
-              <span className="inline-block px-4 py-1 rounded-full text-xs font-black bg-[var(--color-surface-alt)] text-[var(--color-primary)] mb-2">
-                Câu hỏi {questionIndex} / {totalQuestions}
-              </span>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <span className="inline-block px-4 py-1 rounded-full text-xs font-black bg-[var(--color-surface-alt)] text-[var(--color-primary)]">
+                  Câu hỏi {questionIndex} / {totalQuestions}
+                </span>
+                {questionIndex === totalQuestions && revealedAnswer && (
+                  <span className="inline-block px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 animate-bounce">
+                    🏁 Câu cuối cùng
+                  </span>
+                )}
+              </div>
+
               <h2
                 className="text-2xl sm:text-4xl font-extrabold leading-snug text-[var(--color-text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
@@ -470,14 +619,103 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
           <span>Kênh đồng bộ: Đang kết nối</span>
         </div>
 
-        <button
-          onClick={toggleFullscreen}
-          className="p-2 rounded-xl border bg-white hover:bg-slate-100 transition-all text-slate-700 flex items-center gap-1.5 font-bold cursor-pointer"
-        >
-          <Maximize2 size={16} />
-          <span>Toàn màn hình</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <Link href="/game">
+            <button className="p-2 px-3 rounded-xl border bg-white hover:bg-slate-100 transition-all text-slate-700 flex items-center gap-1.5 font-bold cursor-pointer">
+              <Home size={15} />
+              <span>Quay lại phần mềm</span>
+            </button>
+          </Link>
+
+          <button
+            onClick={toggleFullscreen}
+            className="p-2 rounded-xl border bg-white hover:bg-slate-100 transition-all text-slate-700 flex items-center gap-1.5 font-bold cursor-pointer"
+          >
+            <Maximize2 size={16} />
+            <span>Toàn màn hình</span>
+          </button>
+        </div>
       </div>
+
+      {/* ─── POPUP / MODAL VINH DANH NGƯỜI CHIẾN THẮNG ─── */}
+      {showWinnerModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in zoom-in-95 duration-300">
+          <div className="bg-white rounded-3xl max-w-lg w-full border-4 border-amber-300 shadow-2xl overflow-hidden flex flex-col text-center relative">
+            {/* Header Banner */}
+            <div className={`p-6 bg-gradient-to-r ${winnerInfo.color} text-slate-950 flex flex-col items-center gap-3 relative`}>
+              <button
+                onClick={() => setShowWinnerModal(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-full bg-black/10 hover:bg-black/20 text-slate-900"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="w-20 h-20 rounded-full bg-white border-4 border-amber-400 shadow-xl flex items-center justify-center text-4xl animate-bounce">
+                {winnerInfo.icon}
+              </div>
+
+              <div>
+                <span className="text-xs font-black uppercase tracking-widest bg-black/10 px-3 py-1 rounded-full inline-block mb-1">
+                  {winnerInfo.title}
+                </span>
+                <h2 className="text-3xl font-black leading-tight text-slate-950">
+                  {winnerInfo.name}
+                </h2>
+              </div>
+            </div>
+
+            {/* Chi tiết kết quả & Thao tác */}
+            <div className="p-6 flex flex-col gap-5">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <p className="text-sm font-bold text-slate-700 leading-relaxed">
+                  {winnerInfo.detail}
+                </p>
+              </div>
+
+              {/* Nhóm nút hành động */}
+              <div className="flex flex-col gap-2.5">
+                {/* Nút cộng điểm thưởng */}
+                {winnerInfo.id !== 'none' && (
+                  <Button
+                    size="lg"
+                    onClick={handleAwardScore}
+                    disabled={isScoreAwarded}
+                    leftIcon={<Star size={18} className="text-amber-500 fill-amber-500" />}
+                    className={`w-full font-black py-3.5 shadow-md text-base ${
+                      isScoreAwarded
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-amber-400 hover:bg-amber-500 text-slate-950 border-2 border-amber-300'
+                    }`}
+                  >
+                    {isScoreAwarded ? '✓ Đã cộng 10 Sao vào sổ điểm' : '⭐ +10 Điểm Thưởng Vào Sổ Điểm'}
+                  </Button>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setShowWinnerModal(false)}
+                    leftIcon={<RotateCcw size={16} />}
+                    className="font-bold text-xs"
+                  >
+                    Xem lại câu hỏi
+                  </Button>
+
+                  <Link href="/game" className="w-full">
+                    <Button
+                      variant="primary"
+                      leftIcon={<Home size={16} />}
+                      className="w-full font-bold text-xs bg-slate-800 hover:bg-slate-900 text-white"
+                    >
+                      Quay lại phần mềm
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── MODAL PHÓNG TO MÃ QR KẾT NỐI ─── */}
       {showQRModal && (

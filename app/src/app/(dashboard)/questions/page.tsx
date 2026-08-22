@@ -54,11 +54,36 @@ export default function QuestionsPage() {
   const [duration, setDuration] = useState(15)
   const [formLoading, setFormLoading] = useState(false)
 
-  // Form states cho sinh bộ câu hỏi tự động
+  // Form states cho sinh bộ câu hỏi tự động bằng AI
+  const [genTopic, setGenTopic] = useState('')
   const [genSubject, setGenSubject] = useState('Toán học')
   const [genCount, setGenCount] = useState(5)
   const [genType, setGenType] = useState<'mcq' | 'true_false' | 'all'>('mcq')
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'openai' | 'groq' | 'local'>('gemini')
+  const [apiKey, setApiKey] = useState('')
+  const [showKeySetting, setShowKeySetting] = useState(false)
   const [genLoading, setGenLoading] = useState(false)
+
+  // Load API Key & Provider từ localStorage
+  useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedKey = localStorage.getItem('classmanager_ai_key') || ''
+        const savedProvider = (localStorage.getItem('classmanager_ai_provider') as any) || 'gemini'
+        if (savedKey) setApiKey(savedKey)
+        if (savedProvider) setAiProvider(savedProvider)
+      } catch {}
+    }
+  })
+
+  const handleSaveApiKey = (key: string, provider: 'gemini' | 'openai' | 'groq' | 'local') => {
+    setApiKey(key)
+    setAiProvider(provider)
+    try {
+      localStorage.setItem('classmanager_ai_key', key)
+      localStorage.setItem('classmanager_ai_provider', provider)
+    } catch {}
+  }
 
   const resetForm = () => {
     setQType('mcq')
@@ -170,7 +195,7 @@ export default function QuestionsPage() {
 
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
-  // Xử lý tạo tự động bộ câu hỏi
+  // Xử lý tạo tự động bộ câu hỏi qua AI theo Chủ đề
   const handleGenerateSet = async (e: React.FormEvent) => {
     e.preventDefault()
     setGenLoading(true)
@@ -179,17 +204,20 @@ export default function QuestionsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'generate_set',
+          action: 'ai_generate',
+          topic: genTopic.trim() || genSubject,
           subject: genSubject,
           count: genCount,
           question_type: genType,
+          provider: aiProvider,
+          apiKey: apiKey.trim(),
         }),
       })
       if (res.ok) {
         setGenerateOpen(false)
         await refetch()
-        setToastMessage(`🎉 Đã sinh thành công ${genCount} câu hỏi môn ${genSubject}!`)
-        setTimeout(() => setToastMessage(null), 3500)
+        setToastMessage(`🎉 Đã tạo thành công ${genCount} câu hỏi AI về chủ đề: "${genTopic || genSubject}"!`)
+        setTimeout(() => setToastMessage(null), 4000)
       }
     } finally {
       setGenLoading(false)
@@ -495,39 +523,68 @@ export default function QuestionsPage() {
         </form>
       </Modal>
 
-      {/* ─── Modal Sinh Nhanh Bộ Câu Hỏi (Auto Generator) ─── */}
-      <Modal isOpen={generateOpen} onClose={() => setGenerateOpen(false)} title="⚡ Tạo nhanh Bộ câu hỏi Quiz" size="md">
+      {/* ─── Modal Sinh Nhanh Bộ Câu Hỏi Bằng AI (AI Topic Generator) ─── */}
+      <Modal isOpen={generateOpen} onClose={() => setGenerateOpen(false)} title="✨ Tạo Bộ Câu Hỏi Bằng AI Theo Chủ Đề" size="md">
         <form onSubmit={handleGenerateSet} className="flex flex-col gap-4">
-          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
-            💡 Hệ thống sẽ tự động tổng hợp bộ câu hỏi trắc nghiệm chuẩn kiến thức tiểu học theo môn và số lượng bạn chọn.
+          {/* Ô nhập Chủ đề / Yêu cầu cụ thể */}
+          <div className="flex flex-col gap-1.5 p-3.5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 rounded-2xl border border-amber-200">
+            <label className="text-xs font-black text-amber-950 flex items-center justify-between">
+              <span>🎯 CHỦ ĐỀ HOẶC BÀI HỌC CỤ THỂ</span>
+              <span className="text-[10px] font-bold text-amber-700">Tùy biến theo giáo án</span>
+            </label>
+            <input
+              type="text"
+              value={genTopic}
+              onChange={e => setGenTopic(e.target.value)}
+              placeholder="VD: Bảng nhân 7, Từ đồng nghĩa lớp 3, Hệ mặt trời, Animals & Colors..."
+              className="p-3 rounded-xl border border-amber-300 bg-white text-sm font-semibold text-slate-800 placeholder:text-slate-400 shadow-2xs focus:ring-2 focus:ring-amber-400 focus:outline-none"
+            />
+            <p className="text-[11px] text-amber-800 leading-snug">
+              Nhập bất kỳ chủ đề bài học nào bạn muốn dạy, AI sẽ tự động tạo câu hỏi chuẩn kiến thức và phân bổ đều đáp án.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--color-text)]">Môn học</label>
+              <select
+                value={genSubject}
+                onChange={e => setGenSubject(e.target.value)}
+                className="p-2.5 rounded-xl border bg-white text-xs font-bold text-slate-800"
+                style={{ borderColor: 'var(--color-border)' }}
+              >
+                <option value="Toán học">📐 Toán học</option>
+                <option value="Tiếng Việt">📖 Tiếng Việt</option>
+                <option value="Tự nhiên & Xã hội">🌍 Tự nhiên & Xã hội</option>
+                <option value="Tiếng Anh">🔤 Tiếng Anh</option>
+                <option value="Toán Tiếng Anh">📐 Toán bằng Tiếng Anh</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--color-text)]">Loại câu hỏi</label>
+              <select
+                value={genType}
+                onChange={e => setGenType(e.target.value as any)}
+                className="p-2.5 rounded-xl border bg-white text-xs font-bold text-slate-800"
+                style={{ borderColor: 'var(--color-border)' }}
+              >
+                <option value="mcq">🔤 Trắc nghiệm ABCD</option>
+                <option value="true_false">⚖️ Đúng / Sai (True/False)</option>
+                <option value="all">🔀 Kết hợp cả hai</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-[var(--color-text)]">Chọn Môn học</label>
-            <select
-              value={genSubject}
-              onChange={e => setGenSubject(e.target.value)}
-              className="p-2.5 rounded-lg border bg-white text-sm"
-              style={{ borderColor: 'var(--color-border)' }}
-            >
-              <option value="Toán học">📐 Toán học</option>
-              <option value="Toán Tiếng Anh">📐 Toán bằng Tiếng Anh (Math in English)</option>
-              <option value="Tiếng Anh">🔤 Tiếng Anh (English Vocabulary & Grammar)</option>
-              <option value="Tiếng Việt">📖 Tiếng Việt</option>
-              <option value="Tự nhiên & Xã hội">🌍 Tự nhiên & Xã hội</option>
-              <option value="Tất cả">🎲 Tổng hợp Tất cả môn</option>
-            </select>
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-[var(--color-text)]">Số lượng câu hỏi cần tạo</label>
+            <label className="text-xs font-semibold text-[var(--color-text)]">Số lượng câu hỏi</label>
             <div className="grid grid-cols-4 gap-2">
               {[3, 5, 10, 15].map(cnt => (
                 <button
                   key={cnt}
                   type="button"
                   onClick={() => setGenCount(cnt)}
-                  className={`p-2.5 rounded-xl border text-xs font-bold transition-all ${
+                  className={`p-2 rounded-xl border text-xs font-bold transition-all ${
                     genCount === cnt
                       ? 'border-[var(--color-primary)] bg-[var(--color-surface-alt)] text-[var(--color-primary)] ring-2 ring-[var(--color-primary)]'
                       : 'border-[var(--color-border)] bg-white text-[var(--color-text-muted)]'
@@ -539,26 +596,67 @@ export default function QuestionsPage() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-[var(--color-text)]">Loại câu hỏi trong bộ đề</label>
-            <select
-              value={genType}
-              onChange={e => setGenType(e.target.value as any)}
-              className="p-2.5 rounded-lg border bg-white text-sm"
-              style={{ borderColor: 'var(--color-border)' }}
-            >
-              <option value="mcq">🔤 Trắc nghiệm 4 lựa chọn (A/B/C/D)</option>
-              <option value="true_false">⚖️ Trắc nghiệm Đúng / Sai</option>
-              <option value="all">🔀 Kết hợp cả hai loại</option>
-            </select>
+          {/* ─── CẤU HÌNH AI API KEY (GEMINI FREE / CHATGPT / GROQ) ─── */}
+          <div className="border border-slate-200 rounded-2xl p-3 bg-slate-50 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowKeySetting(!showKeySetting)}
+                className="text-xs font-bold text-slate-700 flex items-center gap-1.5 hover:text-[var(--color-primary)] cursor-pointer"
+              >
+                <Sparkles size={14} className="text-amber-500" />
+                <span>Cấu hình AI ({aiProvider === 'gemini' ? 'Google Gemini Free' : aiProvider === 'openai' ? 'OpenAI ChatGPT' : aiProvider === 'groq' ? 'Groq Free' : 'Tự động'})</span>
+                <span className="text-[10px] text-slate-400">[{showKeySetting ? 'Thu gọn' : 'Chỉnh sửa'}]</span>
+              </button>
+            </div>
+
+            {showKeySetting && (
+              <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 animate-in fade-in duration-150">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    { id: 'gemini', label: '🌟 Gemini (Free)' },
+                    { id: 'openai', label: '🤖 ChatGPT' },
+                    { id: 'groq', label: '⚡ Groq (Free)' },
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleSaveApiKey(apiKey, p.id as any)}
+                      className={`p-1.5 rounded-lg border text-[11px] font-bold ${
+                        aiProvider === p.id
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-white text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={e => handleSaveApiKey(e.target.value, aiProvider)}
+                    placeholder={`Dán ${aiProvider === 'gemini' ? 'Gemini API Key (AIza...)' : aiProvider === 'openai' ? 'OpenAI API Key (sk-...)' : 'Groq API Key (gsk_...)'}`}
+                    className="p-2 rounded-lg border bg-white text-xs font-mono"
+                  />
+                  <span className="text-[10px] text-slate-500 leading-snug">
+                    {aiProvider === 'gemini' && '🎁 Lấy Key Gemini miễn phí 100% tại: aistudio.google.com (15 lượt/phút)'}
+                    {aiProvider === 'openai' && '🔑 Dùng tài khoản OpenAI ChatGPT API (gpt-4o-mini)'}
+                    {aiProvider === 'groq' && '⚡ Lấy Key Groq miễn phí 100% tại: console.groq.com (Llama 3.3 siêu nhanh)'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-[var(--color-border)]">
             <Button type="button" variant="ghost" onClick={() => setGenerateOpen(false)}>
               Huỷ
             </Button>
-            <Button type="submit" isLoading={genLoading} leftIcon={<Sparkles size={16} />}>
-              🚀 Sinh {genCount} câu hỏi ngay
+            <Button type="submit" isLoading={genLoading} leftIcon={<Sparkles size={16} />} className="bg-[var(--color-primary)] text-white font-black">
+              Tạo {genCount} câu hỏi bằng AI
             </Button>
           </div>
         </form>

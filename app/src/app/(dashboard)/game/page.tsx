@@ -164,12 +164,43 @@ export default function GameLauncherPage() {
       const student1 = students.find(s => s.id === p1Id) || students[0]
       const student2 = students.find(s => s.id === p2Id) || students[1] || students[0]
 
+      // Tự động xáo trộn vị trí các phương án A, B, C, D cho câu hỏi để đáp án đúng không bị trùng lặp
+      const randomizedQuestions = chosenQuestions.map(q => {
+        let opts = q.options || []
+        if (typeof opts === 'string') {
+          try { opts = JSON.parse(opts) } catch {}
+        }
+
+        if (Array.isArray(opts) && opts.length >= 3 && q.question_type !== 'true_false' && q.question_type !== 'truefalse') {
+          const oldCorrect = opts.find((o: any) => o.label === q.correct_answer) || opts[0]
+          const correctText = oldCorrect?.text || String(oldCorrect)
+
+          const shuffled = [...opts].sort(() => 0.5 - Math.random())
+          const labels = ['A', 'B', 'C', 'D', 'E', 'F']
+
+          const newOptions = shuffled.map((item: any, idx: number) => ({
+            label: labels[idx] || `${idx + 1}`,
+            text: item?.text || String(item),
+          }))
+
+          const newCorrect = newOptions.find(o => o.text === correctText) || newOptions[0]
+
+          return {
+            ...q,
+            options: newOptions,
+            correct_answer: newCorrect.label,
+          }
+        }
+
+        return q
+      })
+
       await createGameSession({
         class_id: selectedClassId,
         game_type: normalizedGameType,
         room_code: roomCode,
         template: {
-          questions: chosenQuestions,
+          questions: randomizedQuestions,
           duel_players: {
             p1: { id: student1?.id || 'p1', name: student1?.name || 'Đấu thủ 1', hp: 100 },
             p2: { id: student2?.id || 'p2', name: student2?.name || 'Đấu thủ 2', hp: 100 },
