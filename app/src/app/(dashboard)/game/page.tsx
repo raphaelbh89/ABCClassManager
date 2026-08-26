@@ -31,6 +31,8 @@ import {
 } from 'lucide-react'
 import type { GameType } from '@/types'
 import { formatFullNameLine } from '@/utils/student-name'
+import { useSubjects } from '@/hooks/useSubjects'
+import { TopicDropdown } from '@/components/common/TopicDropdown'
 
 const GAME_MODES: {
   type: GameType
@@ -144,13 +146,32 @@ export default function GameLauncherPage() {
   }
 
   // Lọc câu hỏi theo môn giảng dạy của GV
+  // Ưu tiên Subject Configuration Module (ids động từ Settings); fallback legacy key
+  const { subjects: subjectsMaster } = useSubjects()
+  const dynamicTeachingNames = useMemo(() => {
+    let ids: string[] | null = null
+    try {
+      const raw = localStorage.getItem('classmanager_teaching_subject_ids')
+      const parsed = raw ? JSON.parse(raw) : null
+      ids = Array.isArray(parsed) ? parsed : null
+    } catch {}
+    if (!ids || ids.length === 0) {
+      ids = subjectsMaster.filter(s => s.is_teaching).map(s => s.id)
+    }
+    if (!ids || ids.length === 0) return []
+    return subjectsMaster.filter(s => ids!.includes(s.id)).map(s => s.name)
+  }, [subjectsMaster])
+
   const subjectFilteredQuestions = useMemo(() => {
+    if (dynamicTeachingNames.length > 0) {
+      return questions.filter(q => dynamicTeachingNames.includes(q.subject || ''))
+    }
     const targetConfig = TEACHING_SUBJECTS.find(s => s.id === teachingSubject)
     if (!targetConfig || targetConfig.subjects.length === 0) return questions
-
     return questions.filter(q => targetConfig.subjects.includes(q.subject || ''))
-  }, [questions, teachingSubject])
+  }, [questions, teachingSubject, dynamicTeachingNames])
 
+  // Danh sách các Chủ Đề (Topics) trích xuất từ các câu hỏi
   // Danh sách các Chủ Đề (Topics) trích xuất từ các câu hỏi
   const availableTopics = useMemo(() => {
     const topicMap = new Map<string, number>()
@@ -158,7 +179,9 @@ export default function GameLauncherPage() {
       const topicName = q.topic || q.subject || 'Tổng hợp'
       topicMap.set(topicName, (topicMap.get(topicName) || 0) + 1)
     })
-    return Array.from(topicMap.entries()).map(([name, count]) => ({ name, count }))
+    return Array.from(topicMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
   }, [subjectFilteredQuestions])
 
   // Danh sách câu hỏi sau khi lọc Môn + Chủ đề + Thể loại
@@ -469,48 +492,26 @@ export default function GameLauncherPage() {
           </div>
         </div>
 
-        {/* ─── THANH CHỌN BỘ CÂU HỎI THEO CHỦ ĐỀ (TOPIC TABS) ─── */}
+        {/* ─── CHỌN BỘ CÂU HỎI THEO CHỦ ĐỀ — DROPDOWN KHÔNG BỊ CHE ─── */}
         <div className="flex flex-col gap-2">
           <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
             <Layers size={15} className="text-amber-500" />
             Chọn Bộ Câu Hỏi Theo Chủ Đề Bài Học:
           </span>
 
-          <div className="flex gap-2 overflow-x-auto pb-1.5 pt-0.5">
-            <button
-              onClick={() => {
+          <TopicDropdown
+            topics={availableTopics}
+            value={filterTopic}
+            onSelect={name => {
+              if (name === 'all') {
                 setFilterTopic('all')
                 setSelectedQuestions([])
-              }}
-              className={`px-3.5 py-2 rounded-xl font-black text-xs whitespace-nowrap transition-all border ${
-                filterTopic === 'all'
-                  ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)] shadow-sm'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              🌐 Tất cả chủ đề ({subjectFilteredQuestions.length})
-            </button>
-
-            {availableTopics.map(t => (
-              <button
-                key={t.name}
-                onClick={() => handleSelectEntireTopic(t.name)}
-                className={`px-3.5 py-2 rounded-xl font-bold text-xs whitespace-nowrap transition-all border flex items-center gap-1.5 ${
-                  filterTopic === t.name
-                    ? 'bg-amber-500 text-white border-amber-600 shadow-sm ring-2 ring-amber-300'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50'
-                }`}
-                title={`Bấm để chọn nhanh toàn bộ ${t.count} câu của chủ đề ${t.name}`}
-              >
-                <span>🎯 {t.name}</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  filterTopic === t.name ? 'bg-white/30 text-white' : 'bg-slate-100 text-slate-600'
-                }`}>
-                  {t.count}
-                </span>
-              </button>
-            ))}
-          </div>
+              } else {
+                handleSelectEntireTopic(name)
+              }
+            }}
+            totalCount={subjectFilteredQuestions.length}
+          />
         </div>
 
         {/* Danh sách câu hỏi checkbox */}

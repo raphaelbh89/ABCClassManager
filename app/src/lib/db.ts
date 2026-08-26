@@ -114,6 +114,10 @@ db.exec(`
     question_type TEXT NOT NULL,
     options TEXT, -- JSON
     correct_answer TEXT,
+    explanation TEXT,
+    difficulty TEXT DEFAULT 'medium',
+    subtopic TEXT,
+    embedding TEXT, -- JSON array of float (dùng cho dedup similarity)
     duration_seconds INTEGER DEFAULT 20,
     is_active INTEGER DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -141,6 +145,66 @@ try {
 // Migration cho cột english_name của học sinh nếu database cũ chưa có
 try {
   db.exec('ALTER TABLE students ADD COLUMN english_name TEXT;')
+} catch {}
+
+// Migration nâng cấp module AI: explanation, difficulty, subtopic, embedding
+try { db.exec('ALTER TABLE questions ADD COLUMN explanation TEXT;') } catch {}
+try { db.exec("ALTER TABLE questions ADD COLUMN difficulty TEXT DEFAULT 'medium';") } catch {}
+try { db.exec('ALTER TABLE questions ADD COLUMN subtopic TEXT;') } catch {}
+try { db.exec('ALTER TABLE questions ADD COLUMN embedding TEXT;') } catch {}
+
+// ═══ Subject Management Module (modulesupdate-arch) ═══
+// Danh mục môn học chủ động — giáo viên tự tạo/đặt tên
+db.exec(`
+  CREATE TABLE IF NOT EXISTS subjects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    icon TEXT DEFAULT '📘',
+    sort_order INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`)
+// Lựa chọn môn giảng dạy của từng giáo viên (hỗ trợ đa GV về sau)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS teacher_subjects (
+    id TEXT PRIMARY KEY,
+    teacher_id TEXT NOT NULL DEFAULT 'teacher-1',
+    subject_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(teacher_id, subject_id),
+    FOREIGN KEY(subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+  );
+`)
+// Câu hỏi gắn khóa ngoại môn học (giữ cột subject TEXT cũ để tương thích ngược)
+try { db.exec('ALTER TABLE questions ADD COLUMN subject_id TEXT;') } catch {}
+
+// Seed mặc định bộ môn Tiếng Anh trọng tâm của dự án
+const __seedSubjects = db.prepare(`
+  INSERT INTO subjects (id, name, icon, sort_order)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(id) DO NOTHING
+`)
+__seedSubjects.run('subj-tieng-anh', 'Tiếng Anh', '🔤', 1)
+__seedSubjects.run('subj-toan-tieng-anh', 'Toán Tiếng Anh', '📐', 2)
+__seedSubjects.run('subj-khoa-hoc-tieng-anh', 'Khoa học Tiếng Anh', '🔬', 3)
+
+// Mặc định: giáo viên dạy cả 3 môn nếu chưa có lựa chọn nào
+if ((db.prepare('SELECT COUNT(*) AS n FROM teacher_subjects').get() as any).n === 0) {
+  const insTs = db.prepare('INSERT OR IGNORE INTO teacher_subjects (id, teacher_id, subject_id) VALUES (?, ?, ?)')
+  ;['subj-tieng-anh', 'subj-toan-tieng-anh', 'subj-khoa-hoc-tieng-anh'].forEach(sid => {
+    insTs.run(`ts-${sid}`, 'teacher-1', sid)
+  })
+}
+
+// Backfill: map câu hỏi cũ sang subject_id theo tên
+try {
+  db.exec(`
+    UPDATE questions SET subject_id = (
+      SELECT s.id FROM subjects s WHERE s.name = questions.subject LIMIT 1
+    )
+    WHERE subject_id IS NULL AND subject IS NOT NULL;
+  `)
 } catch {}
 
 // Khởi tạo dữ liệu mẫu ban đầu nếu database còn trống

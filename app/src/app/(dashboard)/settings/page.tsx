@@ -5,6 +5,8 @@ import { useState, useEffect } from 'react'
 import { useCurrentClass } from '@/context/ClassContext'
 import { useStudents } from '@/hooks/useStudents'
 import { useAttendance } from '@/hooks/useAttendance'
+import { useSubjects } from '@/hooks/useSubjects'
+import { createSubject, setTeachingSubjects } from '@/services/subjects'
 import {
   exportStudentsToExcel,
   exportAttendanceToExcel,
@@ -50,6 +52,7 @@ const TEACHING_SUBJECT_OPTIONS = [
     desc: 'Hiển thị đầy đủ cả Toán học, Tiếng Việt, Tự nhiên & Xã hội và Tiếng Anh',
   },
 ]
+void TEACHING_SUBJECT_OPTIONS
 
 export default function SettingsPage() {
   const { classes, currentClass, setCurrentClass } = useCurrentClass()
@@ -59,14 +62,75 @@ export default function SettingsPage() {
     if (matched) setCurrentClass(matched)
   }
 
+  // Subject Configuration Module — danh mục môn học chủ động
+  const { subjects, refetch: refetchSubjects } = useSubjects()
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([])
+  const [newSubjectName, setNewSubjectName] = useState('')
+  const [subjectBusy, setSubjectBusy] = useState(false)
+  const [subjectMsg, setSubjectMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  // Nạp lựa chọn hiện có khi danh sách môn về
+  useEffect(() => {
+    setSelectedSubjectIds(prev => {
+      if (prev.length > 0) return prev
+      return subjects.filter(s => s.is_teaching).map(s => s.id)
+    })
+  }, [subjects])
+
+  const toggleSubjectSelection = (id: string) => {
+    setSelectedSubjectIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const handleSaveTeachingSubjects = async () => {
+    setSubjectBusy(true)
+    setSubjectMsg(null)
+    try {
+      await setTeachingSubjects(selectedSubjectIds)
+      await refetchSubjects()
+      setSubjectMsg({ text: '✓ Đã lưu môn giảng dạy — Ngân hàng câu hỏi & Trò chơi đã cập nhật', ok: true })
+    } catch (err) {
+      setSubjectMsg({ text: err instanceof Error ? err.message : 'Lưu thất bại', ok: false })
+    } finally {
+      setSubjectBusy(false)
+      setTimeout(() => setSubjectMsg(null), 5000)
+    }
+  }
+
+  const handleCreateSubject = async () => {
+    const name = newSubjectName.trim()
+    if (!name) return
+    setSubjectBusy(true)
+    setSubjectMsg(null)
+    try {
+      const created = await createSubject(name)
+      // Tạo xong tự tick chọn
+      const next = [...selectedSubjectIds, created.id]
+      setSelectedSubjectIds(next)
+      await setTeachingSubjects(next)
+      await refetchSubjects()
+      setNewSubjectName('')
+      setSubjectMsg({ text: `✓ Đã thêm môn "${created.name}" và tick vào môn giảng dạy`, ok: true })
+    } catch (err) {
+      setSubjectMsg({ text: err instanceof Error ? err.message : 'Tạo môn thất bại', ok: false })
+    } finally {
+      setSubjectBusy(false)
+      setTimeout(() => setSubjectMsg(null), 5000)
+    }
+  }
+
   const { students } = useStudents(selectedClassId || null)
   const { sessions } = useAttendance(selectedClassId || null)
 
   // Cài đặt Môn Giảng Dạy & AI
   const [teachingSubject, setTeachingSubject] = useState<string>('all_english')
   const [aiProvider, setAiProvider] = useState<'gemini' | 'openai' | 'groq' | 'local'>('gemini')
-  const [apiKey, setApiKey] = useState('')
 
+  const [apiKey, setApiKey] = useState('')
+  // Key dự phòng cho chuỗi fallback đa provider (modulesupdate.md mục 3)
+  const [groqKey, setGroqKey] = useState('')
+  const [openrouterKey, setOpenrouterKey] = useState('')
   // Cài đặt hệ thống
   const [quietMode, setQuietMode] = useState(false)
   const [soundEffects, setSoundEffects] = useState(true)
@@ -100,6 +164,12 @@ export default function SettingsPage() {
 
       const savedAiProvider = localStorage.getItem('classmanager_ai_provider') as any
       if (savedAiProvider) setAiProvider(savedAiProvider)
+
+      const savedGroqKey = localStorage.getItem('classmanager_ai_groq_key')
+      if (savedGroqKey) setGroqKey(savedGroqKey)
+
+      const savedOrKey = localStorage.getItem('classmanager_ai_openrouter_key')
+      if (savedOrKey) setOpenrouterKey(savedOrKey)
     } catch {}
   }, [])
 
@@ -125,11 +195,14 @@ export default function SettingsPage() {
       localStorage.setItem('classmanager_teaching_subject', teachingSubject)
       localStorage.setItem('classmanager_ai_key', apiKey.trim())
       localStorage.setItem('classmanager_ai_provider', aiProvider)
+      localStorage.setItem('classmanager_ai_groq_key', groqKey.trim())
+      localStorage.setItem('classmanager_ai_openrouter_key', openrouterKey.trim())
     } catch {}
 
     setSavedToast(true)
     setTimeout(() => setSavedToast(false), 2500)
   }
+  void teachingSubject
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -190,7 +263,7 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* ─── MỤC MỚI: MÔN HỌC GIẢNG DẠY CỦA GIÁO VIÊN ─── */}
+      {/* ─── MÔN HỌC GIẢNG DẠY — SUBJECT CONFIGURATION MODULE ─── */}
       <Card padding="md" className="flex flex-col gap-4 border shadow-sm bg-gradient-to-br from-amber-50/30 to-white">
         <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
           <div className="flex items-center gap-2.5">
@@ -200,34 +273,82 @@ export default function SettingsPage() {
             <div>
               <h2 className="font-black text-base text-[var(--color-text)]">Môn Học Giảng Dạy Của Giáo Viên</h2>
               <p className="text-xs text-[var(--color-text-muted)]">
-                Lựa chọn môn học chính để Trung tâm trò chơi và Ngân hàng câu hỏi ưu tiên hiển thị đúng chuyên môn
+                Tick các môn đang dạy — Ngân hàng câu hỏi & Trò chơi tự lọc theo lựa chọn này
               </p>
             </div>
           </div>
+          <Button
+            size="sm"
+            onClick={handleSaveTeachingSubjects}
+            disabled={subjectBusy || selectedSubjectIds.length === 0}
+          >
+            Lưu môn giảng dạy
+          </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {TEACHING_SUBJECT_OPTIONS.map(opt => {
-            const isSelected = teachingSubject === opt.id
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          {subjects.map(s => {
+            const checked = selectedSubjectIds.includes(s.id)
             return (
-              <div
-                key={opt.id}
-                onClick={() => setTeachingSubject(opt.id)}
-                className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col gap-1 ${
-                  isSelected
-                    ? 'border-amber-500 bg-amber-50/50 shadow-sm ring-2 ring-amber-400/20'
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => toggleSubjectSelection(s.id)}
+                className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center gap-3 text-left ${
+                  checked
+                    ? 'border-amber-500 bg-amber-50/60 shadow-sm ring-2 ring-amber-400/20'
                     : 'border-slate-200 bg-white hover:border-slate-300'
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-black text-sm text-slate-900">{opt.title}</span>
-                  {isSelected && <CheckCircle2 size={16} className="text-amber-600" />}
-                </div>
-                <p className="text-xs text-slate-500 leading-snug">{opt.desc}</p>
-              </div>
+                <span
+                  className={`w-5 h-5 rounded-md flex-shrink-0 flex items-center justify-center text-white transition-all ${
+                    checked ? 'bg-amber-500' : 'border-2 border-slate-300'
+                  }`}
+                >
+                  {checked && <CheckCircle2 size={14} />}
+                </span>
+                <span className="text-lg flex-shrink-0">{s.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-black text-sm text-slate-900 block truncate">{s.name}</span>
+                  <span className="text-[10px] font-bold text-slate-400">{s.question_count} câu hỏi</span>
+                </span>
+              </button>
             )
           })}
         </div>
+
+        {/* Tạo môn học mới */}
+        <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl bg-white border border-dashed border-slate-300">
+          <span className="text-xs font-bold text-slate-600">➕ Thêm môn mới:</span>
+          <input
+            type="text"
+            value={newSubjectName}
+            onChange={e => setNewSubjectName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreateSubject() } }}
+            placeholder="VD: Tin học Tiếng Anh, Âm nhạc..."
+            maxLength={50}
+            className="flex-1 min-w-[180px] px-3 py-2 rounded-lg border border-slate-300 text-xs font-semibold focus:outline-none focus:border-amber-500"
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={handleCreateSubject}
+            disabled={subjectBusy || !newSubjectName.trim()}
+          >
+            Tạo môn
+          </Button>
+        </div>
+
+        {subjectMsg && (
+          <p className={`text-xs font-bold ${subjectMsg.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+            {subjectMsg.text}
+          </p>
+        )}
+        {selectedSubjectIds.length === 0 && (
+          <p className="text-xs font-semibold text-amber-700">
+            ⚠️ Chưa tick môn nào — các module Ngân hàng câu hỏi & Trò chơi sẽ hiển thị mặc định bộ 3 môn Tiếng Anh.
+          </p>
+        )}
       </Card>
 
       {/* ─── MỤC MỚI: CẤU HÌNH AI KEY TẠO CÂU HỎI THEO CHỦ ĐỀ ─── */}
@@ -281,6 +402,31 @@ export default function SettingsPage() {
               {aiProvider === 'gemini' && '🎁 Lấy Key Google Gemini miễn phí 100% tại: aistudio.google.com (15 yêu cầu/phút)'}
               {aiProvider === 'openai' && '🔑 Dùng tài khoản OpenAI ChatGPT API (mô hình gpt-4o-mini)'}
               {aiProvider === 'groq' && '⚡ Lấy Key Groq miễn phí 100% tại: console.groq.com (Llama 3.3 siêu nhanh)'}
+            </span>
+          </div>
+
+          {/* Key dự phòng cho chuỗi fallback tự động (Gemini → Groq → OpenRouter) */}
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-2">
+            <label className="text-xs font-black text-slate-700">
+              🛟 Key dự phòng (tùy chọn) — AI tự chuyển khi Gemini hết quota/lỗi 429
+            </label>
+            <input
+              type="password"
+              value={groqKey}
+              onChange={e => setGroqKey(e.target.value)}
+              placeholder="Groq API Key dự phòng (gsk_...) — console.groq.com/keys"
+              className="p-2.5 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+            />
+            <input
+              type="password"
+              value={openrouterKey}
+              onChange={e => setOpenrouterKey(e.target.value)}
+              placeholder="OpenRouter API Key dự phòng cuối (sk-or-...) — openrouter.ai/keys"
+              className="p-2.5 rounded-lg border border-slate-300 bg-white text-xs font-mono"
+            />
+            <span className="text-[10px] text-slate-500 leading-snug">
+              Không điền cũng không sao — hệ thống chỉ dùng provider chính. Có key dự phòng thì khi Gemini trả lỗi 429
+              (quá giới hạn miễn phí), pipeline tự động thử Groq rồi OpenRouter mà bạn không phải thao tác gì.
             </span>
           </div>
         </div>

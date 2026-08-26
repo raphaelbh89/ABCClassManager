@@ -38,6 +38,10 @@ export async function GET(req: Request) {
     const questions = rows.map(r => ({
       ...r,
       options: JSON.parse(r.options || '[]'),
+      explanation: r.explanation ?? null,
+      difficulty: r.difficulty || null,
+      subtopic: r.subtopic ?? null,
+      embedding: (() => { try { return r.embedding ? JSON.parse(r.embedding) : null } catch { return null } })(),
       is_active: Boolean(r.is_active),
     }))
 
@@ -52,7 +56,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { action } = body
 
-    // ─── Tạo tự động bộ câu hỏi theo Chủ đề / AI Prompt (Gemini Free, ChatGPT, Groq, Custom) ───
+    // ─── Tạo tự động bộ câu hỏi theo Chủ đề / AI Prompt (pipeline modulesupdate.md) ───
     if (action === 'generate_set' || action === 'ai_generate') {
       const {
         topic = '',
@@ -63,7 +67,19 @@ export async function POST(req: Request) {
         apiKey = '',
         customBaseUrl = '',
         customModel = '',
+        groqApiKey = '',
+        openrouterApiKey = '',
+        enableVerification,
       } = body
+
+      // Ngữ cảnh chống trùng từ ngân hàng câu hỏi (cùng môn học)
+      const existingRows = db.prepare(
+        'SELECT content, embedding FROM questions WHERE is_active = 1 AND subject = ?'
+      ).all(subject) as any[]
+      const existingQuestions = existingRows.map(r => r.content).filter(Boolean)
+      const existingEmbeddings = existingRows
+        .map(r => { try { return r.embedding ? JSON.parse(r.embedding) : null } catch { return null } })
+        .filter((v: any): v is number[] => Array.isArray(v) && v.length > 0)
 
       const { generateQuestionsWithAI } = await import('@/services/aiGenerator')
       const result = await generateQuestionsWithAI({
@@ -75,18 +91,21 @@ export async function POST(req: Request) {
         apiKey,
         customBaseUrl,
         customModel,
+        groqApiKey,
+        openrouterApiKey,
+        ...(typeof enableVerification === 'boolean' ? { enableVerification } : {}),
+        existingQuestions,
+        existingEmbeddings,
       })
 
-      // Lấy toàn bộ nội dung câu hỏi đã có trong database để chống lưu lặp lại
-      const existingRows = db.prepare('SELECT LOWER(TRIM(content)) as content FROM questions WHERE is_active = 1').all() as any[]
-      const existingSet = new Set(existingRows.map(r => r.content))
-
-      // Chỉ thêm các câu hỏi chưa từng xuất hiện
+      // Chống lưu lặp exact với toàn bộ ngân hàng (mọi môn)
+      const allRows = db.prepare('SELECT LOWER(TRIM(content)) as content FROM questions WHERE is_active = 1').all() as any[]
+      const existingSet = new Set(allRows.map(r => r.content))
       const uniqueToInsert = result.questions.filter(q => !existingSet.has(q.content.trim().toLowerCase()))
 
       const insertStmt = db.prepare(`
-        INSERT INTO questions (id, teacher_id, subject, topic, content, question_type, options, correct_answer, duration_seconds)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO questions (id, teacher_id, subject, topic, subtopic, content, question_type, options, correct_answer, explanation, difficulty, embedding, duration_seconds)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
       const tx = db.transaction((list: any[]) => {
@@ -96,10 +115,14 @@ export async function POST(req: Request) {
             'teacher-1',
             q.subject,
             topic.trim() || q.topic || 'Tổng hợp',
+            q.subtopic || null,
             q.content,
             q.question_type,
             JSON.stringify(q.options),
             q.correct_answer,
+            q.explanation || null,
+            q.difficulty || 'medium',
+            q.embedding ? JSON.stringify(q.embedding) : null,
             q.duration_seconds
           )
         }
@@ -114,6 +137,10 @@ export async function POST(req: Request) {
         isAiGenerated: result.isAiGenerated,
         providerName: result.providerName,
         usedProvider: result.usedProvider,
+        requestedCount: result.requestedCount,
+        duplicatesRemoved: result.duplicatesRemoved,
+        verificationUsed: result.verificationUsed,
+        decomposedSubtopics: result.decomposedSubtopics,
       })
     }
 
@@ -126,13 +153,18 @@ export async function POST(req: Request) {
       options,
       correct_answer,
       duration_seconds = 20,
+      subject_id,
     } = body
+
+    // Phân loại tự động: không truyền subject_id thì tra theo tên môn trong danh mục
+    const resolvedSubjectId = subject_id ||
+      ((db.prepare('SELECT id FROM subjects WHERE LOWER(name) = LOWER(?) AND is_active = 1').get(String(subject).trim()) as any)?.id || null)
 
     const id = `q-${Date.now()}`
     db.prepare(`
-      INSERT INTO questions (id, teacher_id, subject, topic, content, question_type, options, correct_answer, duration_seconds)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, 'teacher-1', subject, topic.trim(), content.trim(), question_type, JSON.stringify(options || []), correct_answer, duration_seconds)
+      INSERT INTO questions (id, teacher_id, subject_id, subject, topic, content, question_type, options, correct_answer, duration_seconds)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, 'teacher-1', resolvedSubjectId, subject, topic.trim(), content.trim(), question_type, JSON.stringify(options || []), correct_answer, duration_seconds)
 
     const created = db.prepare('SELECT * FROM questions WHERE id = ?').get(id) as any
     return NextResponse.json({

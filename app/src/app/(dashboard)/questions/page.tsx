@@ -1,12 +1,14 @@
 'use client'
 // src/app/(dashboard)/questions/page.tsx
 // Ngân hàng Câu hỏi: Tích hợp Custom AI API (Gemini, ChatGPT, Groq, Custom), Test API Key, Chống lặp câu hỏi
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuestions } from '@/hooks/useQuestions'
+import { useSubjects } from '@/hooks/useSubjects'
 import { Card } from '@/components/common/Card'
 import { Button } from '@/components/common/Button'
 import { Modal } from '@/components/common/Modal'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { TopicDropdown } from '@/components/common/TopicDropdown'
 import { Badge } from '@/components/common/Badge'
 import {
   Plus,
@@ -31,10 +33,93 @@ const SUBJECTS = [
   { id: 'Tự nhiên & Xã hội', name: '🌍 Tự nhiên & Xã hội' },
 ]
 
+// Ánh xạ cấu hình "Môn giảng dạy" legacy (fallback khi chưa có danh mục động)
+const TEACHING_SUBJECT_MAP: Record<string, string[]> = {
+  all_english: ['Tiếng Anh', 'Toán Tiếng Anh', 'Khoa học Tiếng Anh'],
+  'Tiếng Anh': ['Tiếng Anh'],
+  'Toán Tiếng Anh': ['Toán Tiếng Anh'],
+  'Khoa học Tiếng Anh': ['Khoa học Tiếng Anh'],
+  all: [], // rỗng = cho phép tất cả
+}
+
+/** Tên hiển thị của môn theo id danh mục (fallback: chính id) */
+function subjectDisplayName(subjects: { id: string; name: string; icon?: string }[], id: string): string {
+  const s = subjects.find(x => x.id === id)
+  return s ? `${s.icon || '📘'} ${s.name}` : `📘 ${id}`
+}
+
 export default function QuestionsPage() {
   const [selectedSubject, setSelectedSubject] = useState('all')
   const [selectedTopic, setSelectedTopic] = useState('all')
-  const { questions, isLoading, addQuestion, editQuestion, removeQuestion, refetch } = useQuestions(selectedSubject)
+  const { subjects } = useSubjects()
+
+  // Môn giảng dạy đã cấu hình (Subject Configuration Module)
+  const [teachingSetting, setTeachingSetting] = useState('all_english')
+  useEffect(() => {
+    try {
+      setTeachingSetting(localStorage.getItem('classmanager_teaching_subject') || 'all_english')
+    } catch {}
+  }, [])
+
+  const allowedSubjects = TEACHING_SUBJECT_MAP[teachingSetting] ?? []
+
+  // Tab môn học hiển thị — nguồn ưu tiên: danh mục động (/api/subjects) tick trong Settings
+  const visibleSubjects = useMemo(() => {
+    const teaching = subjects.filter(s => s.is_teaching)
+    if (teaching.length > 0) {
+      // Nhiều môn → tab đầu gộp tất cả (id riêng __aggregate__, lọc client-side)
+      if (teaching.length > 1) {
+        return [
+          { id: '__aggregate__', name: '🌐 Tất cả môn dạy', ids: teaching.map(s => s.id) },
+          ...teaching.map(s => ({ id: s.name, name: subjectDisplayName(subjects, s.id), ids: [s.id] })),
+        ]
+      }
+      return [{ id: teaching[0].name, name: subjectDisplayName(subjects, teaching[0].id), ids: [teaching[0].id] }]
+    }
+
+    // Fallback legacy theo cấu hình cũ
+    if (allowedSubjects.length === 0) return SUBJECTS
+    if (allowedSubjects.length >= 3) {
+      return [
+        { id: 'Tiếng Anh', name: '🌟 Tất cả Tiếng Anh' },
+        { id: 'Toán Tiếng Anh', name: '📐 Toán Tiếng Anh' },
+        { id: 'Khoa học Tiếng Anh', name: '🔬 Khoa học Tiếng Anh' },
+      ]
+    }
+    const meta: Record<string, string> = {
+      'Tiếng Anh': '🔤 Tiếng Anh',
+      'Toán Tiếng Anh': '📐 Toán Tiếng Anh',
+      'Khoa học Tiếng Anh': '🔬 Khoa học Tiếng Anh',
+    }
+    return allowedSubjects.map(id => ({ id, name: meta[id] || id }))
+  }, [subjects, allowedSubjects])
+
+  // Đưa lựa chọn về tab hợp lệ khi danh sách môn thay đổi
+  useEffect(() => {
+    if (!visibleSubjects.some(s => s.id === selectedSubject)) {
+      setSelectedSubject(visibleSubjects[0]?.id || 'all')
+      setSelectedTopic('all')
+    }
+  }, [visibleSubjects, selectedSubject])
+
+  // Tab tổng hợp: fetch 'all' rồi lọc client-side theo các môn đang dạy
+  const isAggregateTab = selectedSubject === '__aggregate__'
+  const rawHookSubject = isAggregateTab ? 'all' : selectedSubject
+  const { questions: fetchedQuestions, isLoading, addQuestion, editQuestion, removeQuestion, refetch } = useQuestions(rawHookSubject)
+
+  const questions = useMemo(() => {
+    if (!isAggregateTab) return fetchedQuestions
+    const allowedNames = visibleSubjects.filter(v => v.id !== '__aggregate__').map(v => v.id)
+    return fetchedQuestions.filter(q => allowedNames.includes(q.subject || ''))
+  }, [fetchedQuestions, isAggregateTab, visibleSubjects])
+
+  // Danh sách môn cho form Thêm/Sửa & Sinh AI (tên môn từ danh mục động, fallback legacy)
+  const subjectOptions = useMemo(() => {
+    const teaching = subjects.filter(s => s.is_teaching)
+    if (teaching.length > 0) return teaching.map(s => s.name)
+    if (allowedSubjects.length > 0) return allowedSubjects
+    return SUBJECTS.filter(s => s.id !== 'all').map(s => s.id)
+  }, [subjects, allowedSubjects])
 
   // Modals
   const [addOpen, setAddOpen] = useState(false)
@@ -67,6 +152,12 @@ export default function QuestionsPage() {
   const [apiKey, setApiKey] = useState('')
   const [customBaseUrl, setCustomBaseUrl] = useState('')
   const [customModel, setCustomModel] = useState('')
+
+  // Mặc định form theo đúng môn giảng dạy
+  useEffect(() => {
+    if (subjectOptions.length > 0 && !subjectOptions.includes(subject)) setSubject(subjectOptions[0])
+    if (subjectOptions.length > 0 && !subjectOptions.includes(genSubject)) setGenSubject(subjectOptions[0])
+  }, [subjectOptions, subject, genSubject])
   const [showKeySetting, setShowKeySetting] = useState(false)
   const [genLoading, setGenLoading] = useState(false)
 
@@ -132,14 +223,16 @@ export default function QuestionsPage() {
     }
   }
 
-  // Danh sách Topics trích xuất từ câu hỏi hiện có
+  // Danh sách Topics trích xuất từ câu hỏi hiện có — sắp xếp nhiều câu nhất lên đầu
   const availableTopics = useMemo(() => {
     const topicMap = new Map<string, number>()
     questions.forEach(q => {
       const t = q.topic || q.subject || 'Tổng hợp'
       topicMap.set(t, (topicMap.get(t) || 0) + 1)
     })
-    return Array.from(topicMap.entries()).map(([name, count]) => ({ name, count }))
+    return Array.from(topicMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
   }, [questions])
 
   // Lọc theo Topic
@@ -262,10 +355,25 @@ export default function QuestionsPage() {
 
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'warning' } | null>(null)
 
-  // Xử lý tạo tự động bộ câu hỏi qua AI theo Chủ đề
+  // Xử lý tạo tự động bộ câu hỏi qua AI theo Chủ đề (pipeline nhiều bước)
+  const [genStage, setGenStage] = useState<string>('')
+  const STAGES = [
+    '🧩 Đang phân tích chủ đề...',
+    '✍️ Đang sinh câu hỏi...',
+    '🔍 Đang kiểm tra trùng lặp...',
+    '🛡️ Đang thẩm định chất lượng...',
+  ]
+
   const handleGenerateSet = async (e: React.FormEvent) => {
     e.preventDefault()
     setGenLoading(true)
+    setGenStage(STAGES[0])
+    // Xoay vòng thông báo giai đoạn trong lúc chờ server chạy pipeline
+    let stageIdx = 0
+    const stageTimer = setInterval(() => {
+      stageIdx = (stageIdx + 1) % STAGES.length
+      setGenStage(STAGES[stageIdx])
+    }, 4000)
     try {
       const res = await fetch('/api/questions', {
         method: 'POST',
@@ -280,17 +388,23 @@ export default function QuestionsPage() {
           apiKey: apiKey.trim(),
           customBaseUrl: customBaseUrl.trim(),
           customModel: customModel.trim(),
+          groqApiKey: localStorage.getItem('classmanager_ai_groq_key') || '',
+          openrouterApiKey: localStorage.getItem('classmanager_ai_openrouter_key') || '',
         }),
       })
 
       const data = await res.json()
       if (res.ok) {
+        clearInterval(stageTimer)
         setGenerateOpen(false)
         await refetch()
 
         if (data.isAiGenerated) {
+          const shortage = typeof data.requestedCount === 'number' && data.count < data.requestedCount
+            ? ` · ⚠️ Đã tạo ${data.count}/${data.requestedCount} câu do loại bỏ ${data.duplicatesRemoved || 0} câu trùng với ngân hàng cũ`
+            : ''
           setToastMessage({
-            text: `✨ Đã tạo thành công ${data.count} câu hỏi bằng ${data.providerName} về chủ đề "${genTopic}"! (Đã tự động loại bỏ ${data.skippedCount || 0} câu trùng lặp)`,
+            text: `✨ Đã tạo thành công ${data.count} câu hỏi bằng ${data.providerName}${shortage}! (Loại bỏ ${data.skippedCount || 0} câu trùng lặp)`,
             type: 'success',
           })
         } else {
@@ -299,10 +413,19 @@ export default function QuestionsPage() {
             type: 'warning',
           })
         }
+        setTimeout(() => setToastMessage(null), 8000)
+      } else {
+        clearInterval(stageTimer)
+        setToastMessage({
+          text: `❌ ${data.error || 'Tạo câu hỏi thất bại'} — kiểm tra lại API Key hoặc thử lại sau.`,
+          type: 'warning',
+        })
         setTimeout(() => setToastMessage(null), 6000)
       }
     } finally {
+      clearInterval(stageTimer)
       setGenLoading(false)
+      setGenStage('')
     }
   }
 
@@ -350,16 +473,16 @@ export default function QuestionsPage() {
         </div>
       )}
 
-      {/* Tabs Môn học */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {SUBJECTS.map(s => (
+      {/* Tabs Môn học — chỉ hiện các môn giáo viên đang dạy (theo cấu hình Settings) */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {visibleSubjects.map(s => (
           <button
             key={s.id}
             onClick={() => {
               setSelectedSubject(s.id)
               setSelectedTopic('all')
             }}
-            className={`px-4 py-2 rounded-full font-bold text-xs whitespace-nowrap transition-all ${
+            className={`px-4 py-2 rounded-full font-bold text-xs whitespace-nowrap transition-all flex-shrink-0 ${
               selectedSubject === s.id
                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
                 : 'bg-white text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface-alt)]'
@@ -370,36 +493,26 @@ export default function QuestionsPage() {
         ))}
       </div>
 
-      {/* Thanh Lọc Theo Chủ Đề (Topic Pills) */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      {/* Chọn chủ đề — dropdown không bị che/cắt */}
+      <div className="flex items-center gap-3 flex-wrap">
         <span className="text-xs font-black text-slate-500 flex items-center gap-1 flex-shrink-0">
           <Tag size={13} /> Chủ đề:
         </span>
-        <button
-          onClick={() => setSelectedTopic('all')}
-          className={`px-3 py-1 rounded-xl text-xs font-black whitespace-nowrap border transition-all ${
-            selectedTopic === 'all'
-              ? 'bg-slate-900 text-white border-slate-900'
-              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-          }`}
-        >
-          Tất cả ({questions.length})
-        </button>
-
-        {availableTopics.map(t => (
+        <TopicDropdown
+          topics={availableTopics}
+          value={selectedTopic}
+          onSelect={setSelectedTopic}
+          totalCount={questions.length}
+        />
+        {selectedTopic !== 'all' && (
           <button
-            key={t.name}
-            onClick={() => setSelectedTopic(t.name)}
-            className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap border transition-all flex items-center gap-1.5 ${
-              selectedTopic === t.name
-                ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                : 'bg-amber-50/60 text-amber-950 border-amber-200 hover:bg-amber-100'
-            }`}
+            onClick={() => setSelectedTopic('all')}
+            className="px-3 py-1.5 rounded-full text-xs font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-all whitespace-nowrap"
+            title="Xoá lọc chủ đề"
           >
-            <span>🎯 {t.name}</span>
-            <span className="text-[10px] font-black opacity-80">({t.count})</span>
+            ✕ Bỏ lọc
           </button>
-        ))}
+        )}
       </div>
 
       {/* Danh sách câu hỏi */}
@@ -547,8 +660,8 @@ export default function QuestionsPage() {
                 className="p-2.5 rounded-lg border bg-white text-sm"
                 style={{ borderColor: 'var(--color-border)' }}
               >
-                {SUBJECTS.filter(s => s.id !== 'all').map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                {subjectOptions.map(id => (
+                  <option key={id} value={id}>{SUBJECTS.find(s => s.id === id)?.name || id}</option>
                 ))}
               </select>
             </div>
@@ -559,10 +672,16 @@ export default function QuestionsPage() {
                 type="text"
                 value={topic}
                 onChange={e => setTopic(e.target.value)}
+                list="existing-topics-suggestions"
                 placeholder="VD: Đại từ xưng hô, Động vật, Phương tiện..."
                 className="p-2.5 rounded-lg border bg-white text-sm"
                 style={{ borderColor: 'var(--color-border)' }}
               />
+              <datalist id="existing-topics-suggestions">
+                {availableTopics.slice(0, 50).map(t => (
+                  <option key={t.name} value={t.name}>{`${t.count} câu`}</option>
+                ))}
+              </datalist>
             </div>
           </div>
 
@@ -694,9 +813,9 @@ export default function QuestionsPage() {
                 <option value="Tiếng Anh">🔤 Tiếng Anh</option>
                 <option value="Toán Tiếng Anh">📐 Toán bằng Tiếng Anh</option>
                 <option value="Khoa học Tiếng Anh">🔬 Khoa học bằng Tiếng Anh</option>
-                <option value="Tiếng Việt">📖 Tiếng Việt</option>
-                <option value="Toán học">📐 Toán học</option>
-                <option value="Tự nhiên & Xã hội">🌍 Tự nhiên & Xã hội</option>
+                {subjectOptions.includes('Tiếng Việt') && <option value="Tiếng Việt">📖 Tiếng Việt</option>}
+                {subjectOptions.includes('Toán học') && <option value="Toán học">📐 Toán học</option>}
+                {subjectOptions.includes('Tự nhiên & Xã hội') && <option value="Tự nhiên & Xã hội">🌍 Tự nhiên & Xã hội</option>}
               </select>
             </div>
 
@@ -842,7 +961,7 @@ export default function QuestionsPage() {
               Huỷ
             </Button>
             <Button type="submit" isLoading={genLoading} leftIcon={<Sparkles size={16} />} className="bg-[var(--color-primary)] text-white font-black">
-              Tạo {genCount} câu hỏi bằng AI
+              {genLoading ? (genStage || 'Đang xử lý...') : `Tạo ${genCount} câu hỏi bằng AI`}
             </Button>
           </div>
         </form>

@@ -88,13 +88,17 @@ export type QuestionType = 'mcq' | 'true_false' | 'truefalse' | 'buzzer'
 
 export type Question = {
   id: string
-  teacher_id: string
+  teacher_id?: string
   subject?: string
   topic?: string
+  subtopic?: string | null
   content: string
   question_type: QuestionType
   options?: { label: string; text: string }[]
   correct_answer?: string
+  explanation?: string | null
+  difficulty?: 'easy' | 'medium' | 'hard' | null
+  embedding?: number[] | null
   duration_seconds: number
   is_active: boolean
   created_at: string
