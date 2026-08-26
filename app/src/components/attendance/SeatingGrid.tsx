@@ -11,9 +11,12 @@ import { cn } from '@/utils/cn'
 import { AvatarDisplay } from '@/components/student/AvatarDisplay'
 import type { Student } from '@/types'
 import { GripVertical, UserX } from 'lucide-react'
+import { getEnglishName, getVietnameseName } from '@/utils/student-name'
 
 // ─── Toạ độ ghế (row, col) → key ───
 const seatKey = (row: number, col: number) => `${row}-${col}`
+
+type AttendanceStatusValue = 'present' | 'absent' | 'late'
 
 interface SeatingGridProps {
   students: Student[]
@@ -21,18 +24,24 @@ interface SeatingGridProps {
   cols: number
   onSeatChange: (moves: { student_id: string; seat_row: number | null; seat_col: number | null }[]) => void
   readOnly?: boolean
+  /** Trạng thái điểm danh hôm nay: studentId → status. Học sinh 'absent' sẽ bị làm mờ khung ghế */
+  attendanceStatus?: Record<string, AttendanceStatusValue>
 }
 
 // ─── Droppable Seat Cell ───
 function SeatCell({
-  row, col, student, isDragOver, readOnly,
+  row, col, student, isDragOver, readOnly, status,
 }: {
   row: number
   col: number
   student?: Student
   isDragOver: boolean
   readOnly?: boolean
+  status?: AttendanceStatusValue
 }) {
+  const isAbsent = Boolean(student && status === 'absent')
+  const isLate = Boolean(student && status === 'late')
+
   const { setNodeRef, isOver } = useDroppable({ id: seatKey(row, col) })
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: student?.id ?? `empty-${row}-${col}`,
@@ -49,13 +58,15 @@ function SeatCell({
     <div
       ref={ref}
       className={cn(
-        'relative flex flex-col items-center justify-center gap-1',
-        'rounded-[var(--radius-md)] border-2 transition-all duration-150',
-        'min-h-[80px] p-2 text-center select-none',
+        'relative flex items-center gap-2.5 transition-all duration-150',
+        'rounded-[var(--radius-md)] border-2 min-h-[88px] px-2.5 pb-2 pt-6 text-left select-none',
         student
-          ? isDragging
-            ? 'opacity-40 border-[var(--color-primary)] bg-[var(--color-surface-alt)]'
-            : 'border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] hover:border-[var(--color-primary)] hover:shadow-[var(--shadow-md)]'
+          ? isAbsent
+            // Học sinh nghỉ học: khung mờ đi, viền đứt nét
+            ? 'border-dashed border-[var(--color-border)] bg-[var(--color-surface-alt)] opacity-40 saturate-[0.35]'
+            : isDragging
+              ? 'opacity-40 border-[var(--color-primary)] bg-[var(--color-surface-alt)]'
+              : 'border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] hover:border-[var(--color-primary)] hover:shadow-[var(--shadow-md)]'
           : isOver || isDragOver
             ? 'border-[var(--color-primary)] border-dashed bg-[rgba(76,175,130,0.08)]'
             : 'border-dashed border-[var(--color-border)] bg-[var(--color-surface-alt)] opacity-60',
@@ -71,18 +82,49 @@ function SeatCell({
         {row + 1}-{col + 1}
       </span>
 
+      {/* Cờ trạng thái điểm danh trong ngày */}
+      {student && isAbsent && (
+        <span
+          className="absolute top-1 right-1.5 font-black leading-none"
+          style={{ fontSize: '0.6rem', color: 'var(--color-danger, #e74c3c)' }}
+        >
+          ✕ Vắng
+        </span>
+      )}
+      {student && isLate && (
+        <span
+          className="absolute top-1 right-1.5 font-bold leading-none text-amber-500"
+          style={{ fontSize: '0.6rem' }}
+        >
+          ⏰ Muộn
+        </span>
+      )}
+
       {student ? (
         <>
-          <AvatarDisplay config={student.avatar_config} size="xs" />
-          <p
-            className="font-semibold leading-tight truncate w-full"
-            style={{ fontSize: '0.65rem', color: 'var(--color-text)' }}
-          >
-            {student.name.split(' ').slice(-1)[0]} {/* Tên cuối — ngắn hơn */}
-          </p>
+          {/* Avatar nằm một bên */}
+          <div className="flex-shrink-0">
+            <AvatarDisplay config={student.avatar_config} size="sm" />
+          </div>
+
+          {/* Cột chữ: Tên tiếng Việt ở trên, Tên tiếng Anh ở dưới */}
+          <div className="flex flex-col justify-center min-w-0 flex-1">
+            <p
+              className="font-bold leading-tight truncate w-full"
+              style={{ fontSize: '0.82rem', color: 'var(--color-text)' }}
+            >
+              {getVietnameseName(student)}
+            </p>
+            <p
+              className="italic leading-tight truncate w-full"
+              style={{ fontSize: '0.72rem', color: student.english_name ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: 600 }}
+            >
+              {getEnglishName(student) || '—'}
+            </p>
+          </div>
         </>
       ) : (
-        <UserX size={16} style={{ color: 'var(--color-border)' }} />
+        <UserX size={16} style={{ color: 'var(--color-border)' }} className="mx-auto" />
       )}
     </div>
   )
@@ -97,15 +139,22 @@ function DragCard({ student }: { student: Student }) {
     >
       <GripVertical size={14} style={{ color: 'var(--color-primary)' }} />
       <AvatarDisplay config={student.avatar_config} size="xs" />
-      <span className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
-        {student.name.split(' ').slice(-1)[0]}
-      </span>
+      <div className="flex flex-col leading-tight">
+        <span className="font-bold text-sm" style={{ color: 'var(--color-text)' }}>
+          {getVietnameseName(student)}
+        </span>
+        {getEnglishName(student) && (
+          <span className="italic text-xs font-semibold" style={{ color: 'var(--color-primary)' }}>
+            {getEnglishName(student)}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
 
 // ─── Main Component ───
-export function SeatingGrid({ students, rows, cols, onSeatChange, readOnly = false }: SeatingGridProps) {
+export function SeatingGrid({ students, rows, cols, onSeatChange, readOnly = false, attendanceStatus }: SeatingGridProps) {
   const [activeStudent, setActiveStudent] = useState<Student | null>(null)
 
   // Xây map: seatKey → student
@@ -168,15 +217,16 @@ export function SeatingGrid({ students, rows, cols, onSeatChange, readOnly = fal
       onDragEnd={handleDragEnd}
     >
       <div className="flex flex-col gap-4">
-        {/* Grid sơ đồ ghế */}
-        <div>
+        {/* Grid sơ đồ ghế — cuộn ngang khi màn hình hẹp thay vì bóp vỡ ô */}
+        <div className="overflow-x-auto scrollbar-none -mx-1 px-1 pb-1">
+          <div className="min-w-[520px]">
           {/* Nhãn cột */}
           <div className="flex gap-2 mb-1 pl-0">
             <div className="w-4" /> {/* spacer */}
             {Array.from({ length: cols }, (_, c) => (
               <div
                 key={c}
-                className="flex-1 text-center font-bold"
+                className="flex-1 text-center font-bold truncate"
                 style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}
               >
                 Cột {c + 1}
@@ -194,19 +244,24 @@ export function SeatingGrid({ students, rows, cols, onSeatChange, readOnly = fal
               >
                 {r + 1}
               </div>
-              {Array.from({ length: cols }, (_, c) => (
-                <div key={c} className="flex-1">
-                  <SeatCell
-                    row={r}
-                    col={c}
-                    student={seatMap.get(seatKey(r, c))}
-                    isDragOver={false}
-                    readOnly={readOnly}
-                  />
-                </div>
-              ))}
+              {Array.from({ length: cols }, (_, c) => {
+                const cellStudent = seatMap.get(seatKey(r, c))
+                return (
+                  <div key={c} className="flex-1 min-w-0">
+                    <SeatCell
+                      row={r}
+                      col={c}
+                      student={cellStudent}
+                      isDragOver={false}
+                      readOnly={readOnly}
+                      status={cellStudent ? attendanceStatus?.[cellStudent.id] : undefined}
+                    />
+                  </div>
+                )
+              })}
             </div>
           ))}
+          </div>
         </div>
 
         {/* Học sinh chưa có ghế */}
@@ -222,7 +277,10 @@ export function SeatingGrid({ students, rows, cols, onSeatChange, readOnly = fal
               {unseated.map(s => (
                 <div
                   key={s.id}
-                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-[var(--radius-md)]"
+                  className={cn(
+                    'flex items-center gap-1.5 px-2 py-1.5 rounded-[var(--radius-md)]',
+                    attendanceStatus?.[s.id] === 'absent' && 'opacity-40 saturate-[0.35]'
+                  )}
                   style={{
                     background: 'var(--color-surface)',
                     border: '1px dashed var(--color-secondary)',
@@ -231,8 +289,13 @@ export function SeatingGrid({ students, rows, cols, onSeatChange, readOnly = fal
                     color: 'var(--color-text)',
                   }}
                 >
-                  <AvatarDisplay config={s.avatar_config} size="xs" />
-                  {s.name.split(' ').slice(-1)[0]}
+                  <AvatarDisplay config={s.avatar_config} size="sm" />
+                  <div className="flex flex-col leading-tight">
+                    <span style={{ fontSize: '0.8rem' }}>{getVietnameseName(s)}</span>
+                    <span className="italic" style={{ fontSize: '0.7rem', color: s.english_name ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
+                      {getEnglishName(s) || '—'}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

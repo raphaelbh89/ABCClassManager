@@ -30,6 +30,7 @@ import {
   CheckCircle2,
 } from 'lucide-react'
 import type { RealtimeEvent, DuelPlayerState, TeamGroupState, BossFightState } from '@/services/sync'
+import { formatFullNameLine } from '@/utils/student-name'
 
 interface DisplayScreenProps {
   roomCode: string
@@ -57,6 +58,10 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
   const [showWinnerModal, setShowWinnerModal] = useState(false)
   const [originUrl, setOriginUrl] = useState('')
   const [isScoreAwarded, setIsScoreAwarded] = useState(false)
+  const [awardError, setAwardError] = useState<string | null>(null)
+  const [gameClassId, setGameClassId] = useState<string | null>(null)
+  const [gameStudentIds, setGameStudentIds] = useState<Set<string>>(new Set())
+  const [gameStudents, setGameStudents] = useState<any[]>([])
 
   // Game States
   const [gameType, setGameType] = useState<'classic' | 'arena' | 'team' | 'boss'>('classic')
@@ -69,6 +74,29 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
       setOriginUrl(window.location.origin)
     }
   }, [])
+
+  // Xác định lớp & danh sách học sinh thật của phòng chơi (chặn cộng điểm vào ID ảo)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/games?roomCode=${encodeURIComponent(roomCode)}`)
+        if (!res.ok) return
+        const session = await res.json()
+        if (cancelled || !session?.class_id) return
+        setGameClassId(session.class_id)
+        const stRes = await fetch(`/api/students?classId=${encodeURIComponent(session.class_id)}`)
+        if (stRes.ok) {
+          const list = (await stRes.json()) as any[]
+          if (!cancelled) {
+            setGameStudents(list)
+            setGameStudentIds(new Set(list.map(s => s.id)))
+          }
+        }
+      } catch {}
+    })()
+    return () => { cancelled = true }
+  }, [roomCode])
 
   const qrConnectUrl = useMemo(() => {
     const base = originUrl || 'http://localhost:3005'
@@ -183,6 +211,13 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
     return () => clearInterval(timer)
   }, [timeLeft])
 
+  // Tra tên tiếng Anh: ưu tiên theo state đấu thủ, fallback theo danh sách lớp
+  const enOf = (id: string | undefined, self?: { english_name?: string | null }): string | null => {
+    if (self?.english_name) return self.english_name
+    if (!id) return null
+    return (gameStudents as any[]).find(s => s.id === id)?.english_name || null
+  }
+
   // Tính toán người thắng cuộc
   const winnerInfo = useMemo(() => {
     if (gameType === 'arena' && duelState) {
@@ -191,6 +226,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         return {
           title: `🏆 CHIẾN THẮNG 1 VS 1!`,
           name: p1.name,
+          enName: enOf(p1.id, p1),
           id: p1.id,
           detail: `Chiến thắng với ${p1.hp}% HP (đối thủ còn ${p2.hp}% HP)`,
           icon: '🥇',
@@ -200,6 +236,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         return {
           title: `🏆 CHIẾN THẮNG 1 VS 1!`,
           name: p2.name,
+          enName: enOf(p2.id, p2),
           id: p2.id,
           detail: `Chiến thắng với ${p2.hp}% HP (đối thủ còn ${p1.hp}% HP)`,
           icon: '🥇',
@@ -208,7 +245,8 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
       } else {
         return {
           title: `🤝 KẾT QUẢ HÒA!`,
-          name: `${p1.name} & ${p2.name}`,
+          name: `${formatFullNameLine(p1)} & ${formatFullNameLine(p2)}`,
+          enName: null,
           id: p1.id,
           detail: `Cả hai đấu thủ đều bảo toàn được ${p1.hp}% HP!`,
           icon: '🌟',
@@ -223,6 +261,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         return {
           title: `🎉 CẢ LỚP ĐÃ HẠ GỤC BOSS THÀNH CÔNG!`,
           name: `Toàn Thể Lớp Học`,
+          enName: null,
           id: 'all',
           detail: `Tỉ lệ trả lời chính xác đạt ${bossState.overallAccuracy}%! Boss đã bị tiêu diệt hoàn toàn!`,
           icon: '🐉💥',
@@ -232,6 +271,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
         return {
           title: `🐲 BOSS ĐÃ TẨU THOÁT!`,
           name: `Hãy Cố Gắng Lần Sau`,
+          enName: null,
           id: 'none',
           detail: `Tỉ lệ trả lời đúng đạt ${bossState.overallAccuracy}%. Cần đạt từ 80% để hạ gục Boss!`,
           icon: '⚡',
@@ -246,6 +286,7 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
       return {
         title: `🏆 TỔ VÔ ĐỊCH!`,
         name: top?.name || 'Tổ 1',
+        enName: null,
         id: top?.id || 'team-1',
         detail: `Dẫn đầu với ${top?.score || 0} điểm và ${top?.hp || 0}% HP!`,
         icon: '🛡️🥇',
@@ -256,39 +297,58 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
     return {
       title: `🏆 VINH DANH TIẾT HỌC`,
       name: `Các Bạn Học Sinh Xuất Sắc`,
+      enName: null,
       id: 'top',
       detail: `Chúc mừng cả lớp đã hoàn thành xuất sắc các câu hỏi!`,
       icon: '🏆',
       color: 'from-amber-400 via-amber-300 to-yellow-400',
     }
-  }, [gameType, duelState, bossState, teamState])
+  }, [gameType, duelState, bossState, teamState, gameStudents])
 
-  // Cộng điểm thưởng RPG
+  // Cộng điểm thưởng RPG: Winner +10, đối thủ 1v1 +5, cả lớp +5 khi hạ Boss
   const handleAwardScore = async () => {
     if (isScoreAwarded || !winnerInfo.id || winnerInfo.id === 'none') return
+    setAwardError(null)
     try {
-      if (winnerInfo.id !== 'all' && winnerInfo.id !== 'top') {
-        const critRes = await fetch(`/api/evaluations?type=criteria`)
-        const criteria = await critRes.json()
-        const critId = criteria?.[0]?.id
+      if (!gameClassId) throw new Error('Không xác định được lớp của phòng chơi')
 
-        if (critId) {
-          await fetch('/api/evaluations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              student_id: winnerInfo.id,
-              criteria_id: critId,
-              score: 10,
-              note: `⭐ Chiến thắng trò chơi: ${winnerInfo.title}`,
-              session_type: 'game',
-            }),
-          })
+      const critRes = await fetch(`/api/evaluations?type=criteria&classId=${encodeURIComponent(gameClassId)}`)
+      if (!critRes.ok) throw new Error('Không tải được tiêu chí đánh giá')
+      const criteria = await critRes.json()
+      const critId = criteria?.[0]?.id
+      if (!critId) throw new Error('Lớp chưa có tiêu chí đánh giá')
+
+      const VIRTUAL_IDS = ['all', 'top', 'none', 'p1', 'p2']
+      const awards: { student_id: string; criteria_id: string; score: number; note: string }[] = []
+
+      if (!VIRTUAL_IDS.includes(winnerInfo.id) && gameStudentIds.has(winnerInfo.id)) {
+        awards.push({ student_id: winnerInfo.id, criteria_id: critId, score: 10, note: `🏆 Chiến thắng trò chơi (${gameType})` })
+      }
+
+      if (gameType === 'arena' && duelState) {
+        const loser = duelState.p1.hp < duelState.p2.hp ? duelState.p1 : duelState.p2
+        if (gameStudentIds.has(loser.id)) {
+          awards.push({ student_id: loser.id, criteria_id: critId, score: 5, note: '🎖️ Tham gia đối kháng 1v1' })
         }
+      } else if (gameType === 'boss' && winnerInfo.id === 'all') {
+        for (const sid of gameStudentIds) {
+          awards.push({ student_id: sid, criteria_id: critId, score: 5, note: '🐉 Cả lớp hạ gục Boss thành công' })
+        }
+      }
+
+      if (awards.length > 0) {
+        const res = await fetch('/api/evaluations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ awards, session_type: 'game' }),
+        })
+        if (!res.ok) throw new Error('Lưu điểm thất bại')
       }
       setIsScoreAwarded(true)
       confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 } })
-    } catch {}
+    } catch (err) {
+      setAwardError(err instanceof Error ? err.message : 'Cộng điểm thất bại — thử lại!')
+    }
   }
 
   const toggleFullscreen = () => {
@@ -660,6 +720,9 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
                 </span>
                 <h2 className="text-3xl font-black leading-tight text-slate-950">
                   {winnerInfo.name}
+                {winnerInfo.enName && (
+                  <span className="block text-lg font-bold italic text-amber-700 mt-1">{winnerInfo.enName}</span>
+                )}
                 </h2>
               </div>
             </div>
@@ -676,19 +739,26 @@ export function DisplayScreen({ roomCode, lastEvent }: DisplayScreenProps) {
               <div className="flex flex-col gap-2.5">
                 {/* Nút cộng điểm thưởng */}
                 {winnerInfo.id !== 'none' && (
-                  <Button
-                    size="lg"
-                    onClick={handleAwardScore}
-                    disabled={isScoreAwarded}
-                    leftIcon={<Star size={18} className="text-amber-500 fill-amber-500" />}
-                    className={`w-full font-black py-3.5 shadow-md text-base ${
-                      isScoreAwarded
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-amber-400 hover:bg-amber-500 text-slate-950 border-2 border-amber-300'
-                    }`}
-                  >
-                    {isScoreAwarded ? '✓ Đã cộng 10 Sao vào sổ điểm' : '⭐ +10 Điểm Thưởng Vào Sổ Điểm'}
-                  </Button>
+                  <>
+                    <Button
+                      size="lg"
+                      onClick={handleAwardScore}
+                      disabled={isScoreAwarded}
+                      leftIcon={<Star size={18} className="text-amber-500 fill-amber-500" />}
+                      className={`w-full font-black py-3.5 shadow-md text-base ${
+                        isScoreAwarded
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-amber-400 hover:bg-amber-500 text-slate-950 border-2 border-amber-300'
+                      }`}
+                    >
+                      {isScoreAwarded ? '✓ Đã cộng điểm (thắng +10, tham gia +5)' : '⭐ +10 Điểm Thưởng Vào Sổ Điểm'}
+                    </Button>
+                    {awardError && (
+                      <p className="text-xs font-bold text-center" style={{ color: 'var(--color-danger)' }}>
+                        ⚠️ {awardError}
+                      </p>
+                    )}
+                  </>
                 )}
 
                 <div className="grid grid-cols-2 gap-2">

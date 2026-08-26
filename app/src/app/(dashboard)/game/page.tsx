@@ -30,6 +30,7 @@ import {
   Award,
 } from 'lucide-react'
 import type { GameType } from '@/types'
+import { formatFullNameLine } from '@/utils/student-name'
 
 const GAME_MODES: {
   type: GameType
@@ -262,8 +263,8 @@ export default function GameLauncherPage() {
         template: {
           questions: randomizedQuestions,
           duel_players: {
-            p1: { id: student1?.id || 'p1', name: student1?.name || 'Đấu thủ 1', hp: 100 },
-            p2: { id: student2?.id || 'p2', name: student2?.name || 'Đấu thủ 2', hp: 100 },
+            p1: { id: student1?.id || 'p1', name: student1?.name || 'Đấu thủ 1', english_name: student1?.english_name || null, hp: 100 },
+            p2: { id: student2?.id || 'p2', name: student2?.name || 'Đấu thủ 2', english_name: student2?.english_name || null, hp: 100 },
           },
         },
       })
@@ -286,6 +287,9 @@ export default function GameLauncherPage() {
         <div>
           <h1 className="font-bold text-2xl" style={{ fontFamily: 'var(--font-heading)' }}>
             🎮 Trung tâm Trò chơi Lớp học
+            <span className="ml-2 font-semibold text-sm text-[var(--color-text-muted)]">
+              (Classroom Game Hub)
+            </span>
           </h1>
           <p className="text-xs text-[var(--color-text-muted)]">
             Chọn thể loại, bộ câu hỏi theo chủ đề và bắt đầu tiết học tương tác
@@ -408,7 +412,7 @@ export default function GameLauncherPage() {
                   className="p-2 rounded-lg border bg-slate-50 text-xs font-bold text-slate-800"
                 >
                   {students.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.seat_row != null ? `Bàn ${s.seat_row + 1}` : 'Chưa xếp ghế'})</option>
+                    <option key={s.id} value={s.id}>{formatFullNameLine(s)} ({s.seat_row != null ? `Bàn ${s.seat_row + 1}` : 'Chưa xếp ghế'})</option>
                   ))}
                 </select>
               </div>
@@ -421,7 +425,7 @@ export default function GameLauncherPage() {
                   className="p-2 rounded-lg border bg-slate-50 text-xs font-bold text-slate-800"
                 >
                   {students.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.seat_row != null ? `Bàn ${s.seat_row + 1}` : 'Chưa xếp ghế'})</option>
+                    <option key={s.id} value={s.id}>{formatFullNameLine(s)} ({s.seat_row != null ? `Bàn ${s.seat_row + 1}` : 'Chưa xếp ghế'})</option>
                   ))}
                 </select>
               </div>

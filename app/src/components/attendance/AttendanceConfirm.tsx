@@ -10,6 +10,7 @@ import { Button } from '@/components/common/Button'
 import { Badge } from '@/components/common/Badge'
 import { Check, Save, RotateCcw, UserCheck, UserX, Clock } from 'lucide-react'
 import type { Student, AttendanceStatus } from '@/types'
+import { getEnglishName } from '@/utils/student-name'
 import type { PresenceResult } from '@/utils/presenceDetection'
 
 export interface AttendanceEntry {
@@ -174,6 +175,9 @@ export function AttendanceConfirm({
               <div className="flex-1 min-w-0">
                 <p className="font-semibold truncate" style={{ fontSize: '0.7rem', color: 'var(--color-text)' }}>
                   {entry.student.name.split(' ').slice(-2).join(' ')}
+                  {getEnglishName(entry.student) && (
+                    <span className="italic" style={{ color: 'var(--color-primary)' }}> · {getEnglishName(entry.student)}</span>
+                  )}
                 </p>
                 <span
                   className="inline-flex items-center gap-1 font-bold"

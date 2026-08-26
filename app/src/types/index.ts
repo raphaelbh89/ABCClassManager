@@ -11,6 +11,7 @@ export type Student = {
   id: string
   class_id: string
   name: string
+  english_name?: string | null
   avatar_config: AvatarConfig
   seat_row: number | null
   seat_col: number | null
@@ -120,5 +121,5 @@ export type SyncPayload =
   | { type: 'START_TIMER'; durationSeconds: number }
   | { type: 'SCAN_RESULT'; counts: { red: number; green: number; yellow: number; blue: number } }
   | { type: 'REVEAL_ANSWER'; correctAnswer: string; scores: { studentId: string; delta: number }[] }
-  | { type: 'SHOW_LEADERBOARD'; ranks: { studentId: string; name: string; total: number }[] }
+  | { type: 'SHOW_LEADERBOARD'; ranks: { studentId: string; name: string; englishName?: string | null; total: number }[] }
   | { type: 'GAME_OVER' }

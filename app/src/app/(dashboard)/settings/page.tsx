@@ -181,6 +181,9 @@ export default function SettingsPage() {
       <div>
         <h1 className="font-bold text-2xl" style={{ fontFamily: 'var(--font-heading)' }}>
           ⚙️ Cài đặt & Quản lý Hệ thống
+          <span className="ml-2 font-semibold text-sm text-[var(--color-text-muted)]">
+            (System Settings & Management)
+          </span>
         </h1>
         <p className="text-xs text-[var(--color-text-muted)]">
           Cấu hình môn giảng dạy, API Key AI tạo câu hỏi, tài khoản và hiệu chỉnh nhận diện camera

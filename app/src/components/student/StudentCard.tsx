@@ -5,6 +5,7 @@ import { cn } from '@/utils/cn'
 import { AvatarDisplay } from './AvatarDisplay'
 import { Badge } from '@/components/common/Badge'
 import type { Student } from '@/types'
+import { getVietnameseName } from '@/utils/student-name'
 
 interface StudentCardProps {
   student: Student
@@ -57,7 +58,10 @@ export function StudentCard({
         <AvatarDisplay config={student.avatar_config} size="sm" />
         <div className="flex-1 min-w-0">
           <p className="font-bold truncate" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text)' }}>
-            {student.name}
+            {getVietnameseName(student)}
+          </p>
+          <p className="italic font-semibold truncate" style={{ fontSize: '0.7rem', color: student.english_name ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
+            {student.english_name || '—'}
           </p>
           <div className="flex items-center gap-1" style={{ fontSize: '0.7rem' }}>
             {STARS(level)}
@@ -87,9 +91,12 @@ export function StudentCard({
       <AvatarDisplay config={student.avatar_config} size="lg" showRing />
 
       {/* Name */}
-      <div>
-        <p className="font-bold" style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-base)', color: 'var(--color-text)' }}>
-          {student.name}
+      <div className="w-full min-w-0">
+        <p className="font-bold truncate" style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-base)', color: 'var(--color-text)' }}>
+          {getVietnameseName(student)}
+        </p>
+        <p className="italic font-semibold truncate" style={{ fontSize: '0.75rem', color: student.english_name ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
+          {student.english_name || '—'}
         </p>
         {/* Stars */}
         <div className="flex justify-center gap-0.5 mt-1" style={{ fontSize: '1rem' }}>

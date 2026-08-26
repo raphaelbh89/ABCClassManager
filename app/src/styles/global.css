@@ -164,3 +164,74 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--color-primary-light);
   border-radius: var(--radius-full);
 }
+
+/* ============================================================
+   RESPONSIVE FOUNDATION
+   Nguyên tắc: fluid typography (clamp), flexible media,
+   chặn tràn ngang, safe-area cho điện thoại tai thỏ.
+   ============================================================ */
+
+/* 1. Typography co giãn mượt theo viewport — mọi chỗ dùng var(--text-*)
+   tự hưởng lợi mà không cần sửa component */
+@media (max-width: 640px) {
+  :root {
+    --text-xl:   clamp(1.05rem, 0.95rem + 1vw, 1.25rem);
+    --text-2xl:  clamp(1.25rem, 1.05rem + 1.2vw, 1.5rem);
+    --text-3xl:  clamp(1.45rem, 1.15rem + 1.8vw, 1.875rem);
+    --text-4xl:  clamp(1.7rem, 1.3rem + 2.4vw, 2.25rem);
+    --text-display: clamp(2rem, 1.2rem + 4vw, 3rem);
+    /* Spacing thu gọn nhẹ trên mobile cho mật độ hợp lý */
+    --space-8: 1.75rem;
+    --space-10: 2rem;
+    --space-12: 2.25rem;
+  }
+}
+
+/* Chống phóng đại chữ tự động khi xoay ngang trên iOS Safari */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* 2. Flexible images & media — không bao giờ phá vỡ container */
+img, video, canvas, svg {
+  max-width: 100%;
+}
+img, video {
+  height: auto;
+}
+/* Canvas giữ đúng tỉ lệ vẽ (bánh xe may mắn, ảnh phân tích) */
+canvas {
+  display: block;
+}
+
+/* 3. Lưới an toàn: chặn tràn ngang toàn cục nhưng không tạo scroll trap */
+body {
+  overflow-x: clip;
+  /* iOS: tránh zoom-jump khi focus input */
+  -webkit-tap-highlight-color: transparent;
+}
+/* Bất kỳ khối nào có thể bị con đẩy rộng đều được khoá lại */
+main, section, article {
+  min-width: 0;
+}
+
+/* 4. Safe-area cho máy tai thỏ / notch (FAB, thanh dưới cùng) */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.mb-safe { margin-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* 5. Cuộn ngang có chủ đích (sơ đồ ghế nhiều cột) không hiện scrollbar thô */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* 6. Tôn trọng người dùng giảm chuyển động */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

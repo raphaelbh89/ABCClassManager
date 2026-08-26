@@ -119,6 +119,9 @@ export default function AttendancePage() {
       <div className="max-w-3xl mx-auto flex flex-col gap-5">
         <h1 className="font-bold" style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-2xl)' }}>
           📋 Điểm danh
+          <span className="ml-2 font-semibold" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            (Attendance)
+          </span>
         </h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>{today}</p>
 

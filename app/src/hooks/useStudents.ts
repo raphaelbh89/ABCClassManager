@@ -3,7 +3,7 @@
 // Custom hook quản lý state học sinh theo lớp
 import { useState, useEffect, useCallback } from 'react'
 import {
-  getStudentsByClass, createStudent,
+  getStudentsByClass, createStudent, bulkImportStudents,
   updateStudent, deleteStudent, saveSeatLayout
 } from '@/services/students'
 import type { Student, AvatarConfig } from '@/types'
@@ -31,6 +31,7 @@ export function useStudents(classId: string | null) {
 
   const addStudent = useCallback(async (params: {
     name: string
+    english_name?: string | null
     avatar_config?: AvatarConfig
     seat_row?: number
     seat_col?: number
@@ -41,9 +42,16 @@ export function useStudents(classId: string | null) {
     return newStudent
   }, [classId])
 
+  const bulkAddStudents = useCallback(async (rows: { name: string; english_name?: string | null }[]) => {
+    if (!classId) throw new Error('Chưa chọn lớp')
+    const created = await bulkImportStudents(classId, rows)
+    setStudents(prev => [...prev, ...created])
+    return created
+  }, [classId])
+
   const editStudent = useCallback(async (
     id: string,
-    params: Partial<Pick<Student, 'name' | 'avatar_config' | 'seat_row' | 'seat_col'>>
+    params: Partial<Pick<Student, 'name' | 'english_name' | 'avatar_config' | 'seat_row' | 'seat_col'>>
   ) => {
     const updated = await updateStudent(id, params)
     setStudents(prev => prev.map(s => s.id === id ? updated : s))
@@ -67,5 +75,5 @@ export function useStudents(classId: string | null) {
     await saveSeatLayout(seatMap)
   }, [])
 
-  return { students, isLoading, error, refetch: fetchStudents, addStudent, editStudent, removeStudent, updateSeatMap }
+  return { students, isLoading, error, refetch: fetchStudents, addStudent, bulkAddStudents, editStudent, removeStudent, updateSeatMap }
 }

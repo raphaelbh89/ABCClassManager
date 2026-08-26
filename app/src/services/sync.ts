@@ -4,6 +4,7 @@
 export interface DuelPlayerState {
   id: string
   name: string
+  english_name?: string | null
   avatar?: string
   hp: number // 0 - 100
   choice?: string

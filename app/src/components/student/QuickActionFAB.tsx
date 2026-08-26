@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { Modal } from '@/components/common/Modal'
 import { Button } from '@/components/common/Button'
 import { AvatarDisplay } from './AvatarDisplay'
-import { Zap, Plus, Minus } from 'lucide-react'
+import { Zap } from 'lucide-react'
 import type { Student, Criterion } from '@/types'
+import { formatFullNameLine } from '@/utils/student-name'
 
 interface QuickActionFABProps {
   students: Student[]
@@ -60,10 +61,12 @@ export function QuickActionFAB({ students, criteria, onGiveScore }: QuickActionF
       {/* Floating Action Button */}
       <button
         onClick={handleOpen}
-        className="fixed bottom-6 right-6 p-4 rounded-full shadow-lg flex items-center justify-center text-white transition-all duration-200 hover:scale-110 active:scale-95"
+        className="p-4 rounded-full shadow-lg flex items-center justify-center text-white transition-all duration-200 hover:scale-110 active:scale-95"
         style={{
           background: 'linear-gradient(135deg, var(--color-secondary), var(--color-secondary-dark))',
           zIndex: 'var(--z-fab)',
+          bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))',
+          right: 'calc(1.5rem + env(safe-area-inset-right, 0px))',
         }}
         title="Chấm điểm nhanh tại chỗ (Quick Action)"
       >
@@ -86,7 +89,7 @@ export function QuickActionFAB({ students, criteria, onGiveScore }: QuickActionF
             >
               {students.map(s => (
                 <option key={s.id} value={s.id}>
-                  {s.name} {s.seat_row != null ? `(Ghế ${s.seat_row + 1}-${(s.seat_col ?? 0) + 1})` : ''}
+                  {formatFullNameLine(s)} {s.seat_row != null ? `(Ghế ${s.seat_row + 1}-${(s.seat_col ?? 0) + 1})` : ''}
                 </option>
               ))}
             </select>

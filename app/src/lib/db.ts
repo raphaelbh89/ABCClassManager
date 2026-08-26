@@ -44,6 +44,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     class_id TEXT NOT NULL,
     name TEXT NOT NULL,
+    english_name TEXT,
     avatar_config TEXT NOT NULL, -- JSON
     seat_row INTEGER,
     seat_col INTEGER,
@@ -137,6 +138,11 @@ try {
   db.exec('ALTER TABLE questions ADD COLUMN topic TEXT;')
 } catch {}
 
+// Migration cho cột english_name của học sinh nếu database cũ chưa có
+try {
+  db.exec('ALTER TABLE students ADD COLUMN english_name TEXT;')
+} catch {}
+
 // Khởi tạo dữ liệu mẫu ban đầu nếu database còn trống
 const teacherCount = db.prepare('SELECT count(*) as count FROM teachers').get() as { count: number }
 if (teacherCount.count === 0) {
@@ -169,21 +175,21 @@ if (teacherCount.count === 0) {
 
   // Seed 8 học sinh mẫu
   const sampleStudents = [
-    { id: 'st-1', name: 'Nguyễn Văn An', type: 'owl', color: '#4CAF82', r: 0, c: 0 },
-    { id: 'st-2', name: 'Trần Thị Bình', type: 'cat', color: '#FFB347', r: 0, c: 1 },
-    { id: 'st-3', name: 'Lê Hoàng Cúc', type: 'rocket', color: '#7C4DFF', r: 0, c: 2 },
-    { id: 'st-4', name: 'Phạm Minh Đức', type: 'robot', color: '#29B6F6', r: 0, c: 3 },
-    { id: 'st-5', name: 'Vũ Ngọc Hân', type: 'dragon', color: '#FF5252', r: 1, c: 0 },
-    { id: 'st-6', name: 'Đỗ Quốc Khánh', type: 'star', color: '#FFB347', r: 1, c: 1 },
-    { id: 'st-7', name: 'Bùi Mai Linh', type: 'owl', color: '#7C4DFF', r: 1, c: 2 },
-    { id: 'st-8', name: 'Hoàng Gia Nam', type: 'rocket', color: '#4CAF82', r: 1, c: 3 },
+    { id: 'st-1', name: 'Nguyễn Văn An', english: 'Andy', type: 'owl', color: '#4CAF82', r: 0, c: 0 },
+    { id: 'st-2', name: 'Trần Thị Bình', english: 'Bella', type: 'cat', color: '#FFB347', r: 0, c: 1 },
+    { id: 'st-3', name: 'Lê Hoàng Cúc', english: 'Daisy', type: 'rocket', color: '#7C4DFF', r: 0, c: 2 },
+    { id: 'st-4', name: 'Phạm Minh Đức', english: 'David', type: 'robot', color: '#29B6F6', r: 0, c: 3 },
+    { id: 'st-5', name: 'Vũ Ngọc Hân', english: 'Helen', type: 'dragon', color: '#FF5252', r: 1, c: 0 },
+    { id: 'st-6', name: 'Đỗ Quốc Khánh', english: 'Kevin', type: 'star', color: '#FFB347', r: 1, c: 1 },
+    { id: 'st-7', name: 'Bùi Mai Linh', english: 'Lily', type: 'owl', color: '#7C4DFF', r: 1, c: 2 },
+    { id: 'st-8', name: 'Hoàng Gia Nam', english: 'Nathan', type: 'rocket', color: '#4CAF82', r: 1, c: 3 },
   ]
 
   for (const s of sampleStudents) {
     db.prepare(`
-      INSERT INTO students (id, class_id, name, avatar_config, seat_row, seat_col)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(s.id, classId, s.name, JSON.stringify({ type: s.type, color: s.color }), s.r, s.c)
+      INSERT INTO students (id, class_id, name, english_name, avatar_config, seat_row, seat_col)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(s.id, classId, s.name, s.english, JSON.stringify({ type: s.type, color: s.color }), s.r, s.c)
   }
 
   // Seed 4 câu hỏi mẫu

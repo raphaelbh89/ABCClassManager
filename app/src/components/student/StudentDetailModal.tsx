@@ -1,5 +1,6 @@
 'use client'
 // src/components/student/StudentDetailModal.tsx
+import { useEffect } from 'react'
 import { Modal } from '@/components/common/Modal'
 import { AvatarDisplay } from './AvatarDisplay'
 import { RadarStats } from './RadarStats'
@@ -8,6 +9,7 @@ import { Button } from '@/components/common/Button'
 import { useEvaluations } from '@/hooks/useEvaluations'
 import { Award, TrendingUp, History } from 'lucide-react'
 import type { Student } from '@/types'
+import { getEnglishName, getVietnameseName } from '@/utils/student-name'
 
 interface StudentDetailModalProps {
   isOpen: boolean
@@ -22,10 +24,15 @@ export function StudentDetailModal({
   student,
   classId,
 }: StudentDetailModalProps) {
-  const { radarStats, achievements, evaluations, isLoading } = useEvaluations(
+  const { radarStats, achievements, evaluations, isLoading, fetchStudentData } = useEvaluations(
     classId,
     student?.id
   )
+
+  // Luôn tải dữ liệu điểm MỚI NHẤT mỗi lần mở modal để hiển thị đúng số sao vừa cộng
+  useEffect(() => {
+    if (isOpen && student && classId) fetchStudentData()
+  }, [isOpen, student, classId, fetchStudentData])
 
   if (!student) return null
 
@@ -39,8 +46,13 @@ export function StudentDetailModal({
           <AvatarDisplay config={student.avatar_config} size="lg" showRing />
           <div className="flex-1 min-w-0">
             <h3 className="font-bold text-lg leading-tight" style={{ fontFamily: 'var(--font-heading)' }}>
-              {student.name}
+              {getVietnameseName(student)}
             </h3>
+            {getEnglishName(student) && (
+              <p className="text-sm italic font-semibold leading-tight" style={{ color: 'var(--color-primary)' }}>
+                {getEnglishName(student)}
+              </p>
+            )}
             <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
               {student.seat_row != null
                 ? `Vị trí: Hàng ${student.seat_row + 1}, Cột ${(student.seat_col ?? 0) + 1}`

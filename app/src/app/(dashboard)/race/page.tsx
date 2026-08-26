@@ -23,6 +23,7 @@ import {
   Disc,
 } from 'lucide-react'
 import type { Student } from '@/types'
+import { getEnglishName, getVietnameseName, formatFullNameLine } from '@/utils/student-name'
 
 // Các nhân vật đua ngộ nghĩnh
 const RACER_AVATARS = [
@@ -37,6 +38,9 @@ const RACER_AVATARS = [
   { icon: '🦄', name: 'Kỳ Lân', color: 'bg-purple-100 border-purple-400 text-purple-950 shadow-purple-200' },
   { icon: '🐧', name: 'Chim Cánh Cụt', color: 'bg-cyan-100 border-cyan-400 text-cyan-950 shadow-cyan-200' },
 ]
+
+// Viết hoa chữ cái đầu mỗi từ — dùng util chung của toàn ứng dụng
+const toTitleCase = (value: string) => getVietnameseName({ name: value })
 
 // Bảng màu rực rỡ cho Vòng Quay May Mắn
 const WHEEL_COLORS = [
@@ -85,6 +89,21 @@ export default function CalloutGamePage() {
   const [racers, setRacers] = useState<RacerState[]>([])
   const [winner, setWinner] = useState<{ student: Student; icon?: string } | null>(null)
   const [scoreAwarded, setScoreAwarded] = useState(false)
+  const [participationAwarded, setParticipationAwarded] = useState(false)
+
+  // Chiều cao hồ bơi co giãn theo thiết bị (điện thoại thấp hơn để vừa màn hình dọc)
+  const [pondHeight, setPondHeight] = useState(520)
+  useEffect(() => {
+    const compute = () => {
+      const w = window.innerWidth
+      if (w < 480) setPondHeight(430)
+      else if (w < 768) setPondHeight(480)
+      else setPondHeight(520)
+    }
+    compute()
+    window.addEventListener('resize', compute)
+    return () => window.removeEventListener('resize', compute)
+  }, [])
   const [activeTab, setActiveTab] = useState<'available' | 'called'>('available')
   const [commentary, setCommentary] = useState('Chuẩn bị xuất phát! Cả lớp sẵn sàng chưa nào?')
 
@@ -190,6 +209,161 @@ export default function CalloutGamePage() {
     } catch {}
   }
 
+  // ─── NHẠC NỀN ĐUA VỊT (synth sôi động, tự lặp bằng Web Audio) ───
+  const musicRef = useRef({ playing: false, nextLoopAt: 0 })
+  const musicMasterRef = useRef<GainNode | null>(null)
+
+  const stopRaceMusic = () => {
+    musicRef.current.playing = false
+    const master = musicMasterRef.current
+    const ctx = audioCtxRef.current
+    if (master && ctx) {
+      try {
+        master.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.04)
+      } catch {}
+      const node = master
+      window.setTimeout(() => { try { node.disconnect() } catch {} }, 400)
+    }
+    musicMasterRef.current = null
+  }
+
+  const startRaceMusic = () => {
+    if (musicRef.current.playing) return
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      }
+      const ctx = audioCtxRef.current
+      if (!ctx) return
+      if (ctx.state === 'suspended') ctx.resume()
+
+      const master = ctx.createGain()
+      master.gain.value = soundEnabled ? 0.14 : 0.0001
+      master.connect(ctx.destination)
+      musicMasterRef.current = master
+
+      const bpm = 148
+      const beat = 60 / bpm
+      const loopBars = 4
+      const loopDur = beat * 4 * loopBars
+
+      // Giai điệu vui tươi 16 phách (C pentatonic) — [nốt, số phách]
+      const RACE_MELODY: Array<[string, number]> = [
+        ['C5', 0.5], ['D5', 0.5], ['E5', 0.5], ['G5', 0.5], ['E5', 1], ['D5', 1],
+        ['C5', 0.5], ['D5', 0.5], ['E5', 0.5], ['G5', 0.5], ['A5', 1], ['G5', 1],
+        ['E5', 0.5], ['G5', 0.5], ['A5', 0.5], ['C6', 0.5], ['A5', 0.5], ['G5', 0.5], ['E5', 1],
+        ['D5', 0.5], ['E5', 0.5], ['D5', 0.5], ['C5', 0.5], ['D5', 1], ['C5', 1],
+      ]
+      // Vòng hoà âm C – F – Am – G, mỗi ô nhịp một nốt bass
+      const bassRoots = ['C3', 'F3', 'A3', 'G3']
+      const FREQS: Record<string, number> = {
+        C3: 130.81, F3: 174.61, A3: 220.0, G3: 196.0,
+        C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99, A5: 880.0, C6: 1046.5,
+      }
+
+      const noiseBuffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.12), ctx.sampleRate)
+      const noiseData = noiseBuffer.getChannelData(0)
+      for (let i = 0; i < noiseData.length; i++) noiseData[i] = Math.random() * 2 - 1
+
+      const tone = (freq: number, t: number, dur: number, type: OscillatorType, vol: number) => {
+        const osc = ctx.createOscillator()
+        const g = ctx.createGain()
+        osc.type = type
+        osc.frequency.value = freq
+        g.gain.setValueAtTime(0.0001, t)
+        g.gain.exponentialRampToValueAtTime(vol, t + 0.02)
+        g.gain.setValueAtTime(vol, t + Math.max(0.03, dur - 0.06))
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+        osc.connect(g)
+        g.connect(master)
+        osc.start(t)
+        osc.stop(t + dur + 0.05)
+      }
+
+      const hat = (t: number, vol = 0.05) => {
+        const src = ctx.createBufferSource()
+        src.buffer = noiseBuffer
+        const hp = ctx.createBiquadFilter()
+        hp.type = 'highpass'
+        hp.frequency.value = 7000
+        const g = ctx.createGain()
+        g.gain.setValueAtTime(vol, t)
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05)
+        src.connect(hp)
+        hp.connect(g)
+        g.connect(master)
+        src.start(t)
+        src.stop(t + 0.08)
+      }
+
+      const kick = (t: number) => {
+        const osc = ctx.createOscillator()
+        const g = ctx.createGain()
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(150, t)
+        osc.frequency.exponentialRampToValueAtTime(45, t + 0.12)
+        g.gain.setValueAtTime(0.32, t)
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15)
+        osc.connect(g)
+        g.connect(master)
+        osc.start(t)
+        osc.stop(t + 0.18)
+      }
+
+      const scheduleLoop = (loopStart: number) => {
+        for (let b = 0; b < loopBars * 4; b++) {
+          const t = loopStart + b * beat
+          tone(FREQS[bassRoots[Math.floor(b / 4)]], t, beat * 0.9, 'triangle', 0.2)
+          kick(t)
+          hat(t + beat / 2)
+          if (b % 2 === 0) hat(t, 0.03)
+        }
+        let mt = loopStart
+        for (const [note, len] of RACE_MELODY) {
+          const dur = len * beat
+          const freq = FREQS[note]
+          if (freq) tone(freq, mt, dur * 0.92, 'square', 0.11)
+          mt += dur
+        }
+      }
+
+      musicRef.current.playing = true
+      musicRef.current.nextLoopAt = ctx.currentTime + 0.1
+
+      const tick = () => {
+        if (!musicRef.current.playing) return
+        const now = ctx.currentTime
+        if (musicRef.current.nextLoopAt < now + 0.4) {
+          if (musicRef.current.nextLoopAt < now) musicRef.current.nextLoopAt = now + 0.05
+          scheduleLoop(musicRef.current.nextLoopAt)
+          musicRef.current.nextLoopAt += loopDur
+        }
+        window.setTimeout(tick, 200)
+      }
+      tick()
+    } catch {}
+  }
+
+  // Bật nhạc khi đang đua, dừng khi kết thúc/đổi chế độ
+  useEffect(() => {
+    if (gameMode === 'duck_race' && phase === 'racing') startRaceMusic()
+    else stopRaceMusic()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, gameMode])
+
+  // Bật/tắt loa giữa chừng cuộc đua
+  useEffect(() => {
+    if (!soundEnabled) {
+      stopRaceMusic()
+    } else if (gameMode === 'duck_race' && phase === 'racing') {
+      startRaceMusic()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soundEnabled])
+
+  // Dọn dẹp khi rời trang
+  useEffect(() => () => { musicRef.current.playing = false }, [])
+
   // Khởi tạo tay đua
   const createFreshRacers = (list: Student[]): RacerState[] => {
     return list.map((s, idx) => ({
@@ -212,6 +386,18 @@ export default function CalloutGamePage() {
     }
   }, [availableStudents, phase])
 
+  // Đưa toàn bộ tay đua về vạch xuất phát khi chưa đua
+  useEffect(() => {
+    if (gameMode !== 'duck_race') return
+    if (phase !== 'idle' && phase !== 'countdown') return
+    const raf = requestAnimationFrame(() => {
+      containerRef.current?.querySelectorAll<HTMLElement>('[data-race-track] [data-racer-id]').forEach(el => {
+        el.style.transform = 'translate3d(110px, 0, 0)'
+      })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [phase, gameMode, availableStudents])
+
   // ─── 1. BẮT ĐẦU ĐUA VỊT ───
   const startDuckRace = () => {
     if (availableStudents.length === 0) return
@@ -222,6 +408,7 @@ export default function CalloutGamePage() {
 
     setWinner(null)
     setScoreAwarded(false)
+    setParticipationAwarded(false)
     setPhase('countdown')
     setCountdownNum(3)
     setCommentary('🏁 Chuẩn bị... 3...')
@@ -245,19 +432,48 @@ export default function CalloutGamePage() {
     }, 850)
   }
 
-  // Animation Loop cho Đua Vịt
+  // Animation Loop cho Đua Vịt — ghi trực tiếp lên DOM để mượt, chỉ setRacers ~5 fps
   useEffect(() => {
     if (phase !== 'racing' || gameMode !== 'duck_race') return
 
+    const container = containerRef.current
+    if (!container) return
+    const trackEl = container.querySelector('[data-race-track]') as HTMLDivElement | null
+    if (!trackEl) return
+    const racerEls = trackEl.querySelectorAll<HTMLDivElement>('[data-racer-id]')
+    if (racerEls.length === 0) return
+
+    // Mover giờ chỉ chứa icon (tên là absolute right-full nên không tính vào width)
+    const startX = 132 // chừa chỗ cho "Tên Việt · Tên Anh" kéo dài về bên trái
+    const iconW = racerEls[0]?.offsetWidth || 24
+
+    let trackWidth = trackEl.clientWidth
+    const endX = () => Math.max(startX + 40, trackWidth - 52 - iconW)
+    const computeLeft = (progress: number) => {
+      const clamped = Math.min(100, Math.max(0, progress))
+      return startX + (clamped / 100) * (endX() - startX)
+    }
+
+    // Xoay máy / resize cửa sổ: đo lại và đặt lại vị trí toàn bộ tay đua ngay lập tức
+    const onResize = () => {
+      trackWidth = trackEl.clientWidth
+      racersRef.current.forEach((r, i) => {
+        const el = racerEls[i]
+        if (el) el.style.transform = `translate3d(${computeLeft(r.progress)}px, 0, 0)`
+      })
+    }
+    window.addEventListener('resize', onResize)
+
     let raceFinished = false
     let frameCount = 0
+    let lastSyncTime = 0
 
-    const loop = () => {
+    const loop = (now: number) => {
       if (raceFinished) return
       frameCount++
 
-      let currentRacers = racersRef.current
-      const maxProgress = Math.max(...currentRacers.map(r => r.progress), 0)
+      const currentRacers = racersRef.current
+      const maxProgress = currentRacers.reduce((m, r) => Math.max(m, r.progress), 0)
 
       if (frameCount % 60 === 0 && maxProgress > 25 && maxProgress < 60) {
         const luckyIdx = Math.floor(Math.random() * currentRacers.length)
@@ -271,7 +487,6 @@ export default function CalloutGamePage() {
       if (frameCount % 75 === 0 && maxProgress >= 55 && maxProgress < 85) {
         const sortedByProg = [...currentRacers].sort((a, b) => b.progress - a.progress)
         const trailingRacers = sortedByProg.slice(Math.floor(currentRacers.length / 2))
-
         if (trailingRacers.length > 0) {
           const comebackHero = trailingRacers[Math.floor(Math.random() * trailingRacers.length)]
           const targetIndex = currentRacers.findIndex(r => r.student.id === comebackHero.student.id)
@@ -291,40 +506,41 @@ export default function CalloutGamePage() {
 
       let leadRacer: RacerState | null = null
 
-      currentRacers = currentRacers.map(r => {
+      for (let i = 0; i < currentRacers.length; i++) {
+        const r = currentRacers[i]
         let currentMultiplier = 1
-
         if (r.boostTimer > 0) {
           r.boostTimer--
           currentMultiplier = r.boostMultiplier
         } else {
           r.statusEffect = null
         }
-
         const wave = Math.sin(frameCount * 0.1 + r.lane) * 0.03
         const randomStep = Math.random() * 0.05
         const delta = Math.max(0.04, (r.baseSpeed + wave + randomStep) * currentMultiplier)
-
         const nextProgress = Math.min(100, r.progress + delta)
-
         if (nextProgress >= 100 && !leadRacer) {
           leadRacer = { ...r, progress: 100 }
         }
+        r.progress = nextProgress
 
-        return {
-          ...r,
-          progress: nextProgress,
+        // Ghi trực tiếp lên DOM
+        const el = racerEls[i]
+        if (el) {
+          el.style.transform = `translate3d(${computeLeft(nextProgress)}px, 0, 0)`
         }
-      })
+      }
 
-      const sortedRanks = [...currentRacers].sort((a, b) => b.progress - a.progress)
-      currentRacers = currentRacers.map(r => {
-        const rank = sortedRanks.findIndex(s => s.student.id === r.student.id) + 1
-        return { ...r, rank }
-      })
-
-      racersRef.current = currentRacers
-      setRacers([...currentRacers])
+      if (now - lastSyncTime > 200) {
+        const sortedRanks = [...currentRacers].sort((a, b) => b.progress - a.progress)
+        for (let i = 0; i < currentRacers.length; i++) {
+          const r = currentRacers[i]
+          const rank = sortedRanks.findIndex(s => s.student.id === r.student.id) + 1
+          r.rank = rank
+        }
+        lastSyncTime = now
+        setRacers([...currentRacers])
+      }
 
       if (leadRacer) {
         raceFinished = true
@@ -333,9 +549,9 @@ export default function CalloutGamePage() {
         setPhase('winner')
         setCommentary(`🎉 XIN CHÚC MỪNG BẠN ${win.student.name.toUpperCase()} ĐÃ VỀ NHẤT! 🥇`)
         playSound('cheer')
-
         const nextCalled = Array.from(new Set([...calledIds, win.student.id]))
         saveCalledIds(nextCalled)
+        setRacers([...currentRacers])
         return
       }
 
@@ -345,6 +561,7 @@ export default function CalloutGamePage() {
     animRef.current = requestAnimationFrame(loop)
 
     return () => {
+      window.removeEventListener('resize', onResize)
       if (animRef.current) cancelAnimationFrame(animRef.current)
     }
   }, [phase, gameMode])
@@ -425,6 +642,7 @@ export default function CalloutGamePage() {
     setIsSpinning(true)
     setWinner(null)
     setScoreAwarded(false)
+    setParticipationAwarded(false)
     setPhase('racing')
     setCommentary('🎡 Vòng quay đang xoay tít! Ai sẽ là người được chọn?!')
 
@@ -478,6 +696,7 @@ export default function CalloutGamePage() {
 
     setWinner(null)
     setScoreAwarded(false)
+    setParticipationAwarded(false)
     setPhase('idle')
     setCommentary(
       remaining.length > 0
@@ -496,6 +715,7 @@ export default function CalloutGamePage() {
       setRacers(freshRacers)
       setWinner(null)
       setScoreAwarded(false)
+    setParticipationAwarded(false)
       setPhase('idle')
       setWheelRotation(0)
       setCommentary('Đã reset toàn bộ học sinh! Sẵn sàng cho vòng mới.')
@@ -507,24 +727,68 @@ export default function CalloutGamePage() {
     if (!winner || scoreAwarded) return
     try {
       const critRes = await fetch(`/api/evaluations?type=criteria&classId=${encodeURIComponent(selectedClassId)}`)
+      if (!critRes.ok) throw new Error('Không tải được tiêu chí đánh giá')
       const criteria = await critRes.json()
       const critId = criteria?.[0]?.id
 
-      if (critId) {
-        await fetch('/api/evaluations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            student_id: winner.student.id,
-            criteria_id: critId,
-            score: 10,
-            note: '⭐ Trả lời bài xuất sắc (Gọi Trả Bài)',
-            session_type: 'quick',
-          }),
-        })
+      if (!critId) {
+        setCommentary('⚠️ Lớp chưa có tiêu chí đánh giá — hãy tạo tiêu chí trong phần Cài đặt trước khi cộng điểm!')
+        return
       }
+
+      const res = await fetch('/api/evaluations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student_id: winner.student.id,
+          criteria_id: critId,
+          score: 10,
+          note: '⭐ Trả lời bài xuất sắc (Gọi Trả Bài)',
+          session_type: 'quick',
+        }),
+      })
+      if (!res.ok) throw new Error('Lưu điểm thất bại')
       setScoreAwarded(true)
-    } catch {}
+    } catch {
+      setCommentary('⚠️ Cộng điểm thất bại — vui lòng thử lại!')
+    }
+  }
+
+  // Cộng 5 điểm tham gia cho các tay đua không về nhất (công bằng, mỗi lượt đua 1 lần)
+  const handleAwardParticipation = async () => {
+    if (!winner || participationAwarded) return
+    try {
+      const critRes = await fetch(`/api/evaluations?type=criteria&classId=${encodeURIComponent(selectedClassId)}`)
+      if (!critRes.ok) throw new Error()
+      const criteria = await critRes.json()
+      const critId = criteria?.[0]?.id
+      if (!critId) {
+        setCommentary('⚠️ Lớp chưa có tiêu chí đánh giá — hãy tạo tiêu chí trong phần Cài đặt!')
+        return
+      }
+      const awards = racers
+        .filter(r => r.student.id !== winner.student.id)
+        .map(r => ({
+          student_id: r.student.id,
+          criteria_id: critId,
+          score: 5,
+          note: '🎉 Tham gia đua vịt sôi nổi',
+        }))
+      if (awards.length === 0) {
+        setParticipationAwarded(true)
+        return
+      }
+      const res = await fetch('/api/evaluations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ awards, session_type: 'game' }),
+      })
+      if (!res.ok) throw new Error()
+      setParticipationAwarded(true)
+      setCommentary(`🎁 Đã cộng 5 điểm tham gia cho ${awards.length} tay đua!`)
+    } catch {
+      setCommentary('⚠️ Cộng điểm tham gia thất bại — vui lòng thử lại!')
+    }
   }
 
   // Toggle Fullscreen
@@ -548,6 +812,9 @@ export default function CalloutGamePage() {
             <span className="text-2xl">🎯</span>
             <h1 className="font-bold text-2xl text-[var(--color-text)]" style={{ fontFamily: 'var(--font-heading)' }}>
               Gọi Trả Bài Lớp Học
+              <span className="ml-2 font-semibold text-sm text-[var(--color-text-muted)]">
+                (Class Review Caller)
+              </span>
             </h1>
             <Badge variant="primary">Ngẫu nhiên & Hào hứng</Badge>
           </div>
@@ -643,20 +910,47 @@ export default function CalloutGamePage() {
       </div>
 
       {/* ─── GIAO DIỆN TRÒ CHƠI 1: ĐUA VỊT THẦN TỐC ─── */}
-      {gameMode === 'duck_race' && (
-        <div className="relative rounded-3xl overflow-hidden border-4 border-amber-300 shadow-2xl bg-gradient-to-b from-sky-400 via-sky-300 to-blue-500 min-h-[460px] flex flex-col justify-between p-4">
+      {gameMode === 'duck_race' && (() => {
+        // Ao đua chung: mọi tay đua bơi cùng nhau trong một mặt nước, không làn ngang
+        const racerCount = Math.max(availableStudents.length, 1)
+        // Khoảng dự trữ tỉ lệ theo chiều cao hồ (điện thoại thấp hơn)
+        const reserveTop = pondHeight < 500 ? 48 : 56
+        const reserveBottom = pondHeight < 500 ? 8 : 12
+        const trackHeight = pondHeight - reserveTop - reserveBottom
+        const rowH = trackHeight / racerCount
+        // Icon to hơn hàng một chút — cho phép chen chồng nhẹ để nhìn rõ mặt vịt
+        const iconSize = Math.max(24, Math.min(44, Math.round(rowH * 1.7)))
+        const iconFontSize = Math.max(12, Math.round(iconSize * 0.62))
+        const nameFontSize = Math.max(9, Math.round(iconSize * 0.38))
+
+        const displayRacers = phase === 'idle'
+          ? availableStudents.map((s, idx) => ({
+              student: s,
+              avatar: RACER_AVATARS[idx % RACER_AVATARS.length],
+              progress: 0,
+              baseSpeed: 1,
+              boostTimer: 0,
+              boostMultiplier: 1,
+              statusEffect: null,
+              rank: idx + 1,
+              lane: idx,
+            }))
+          : racers
+
+        return (
+        <div className="relative rounded-3xl overflow-hidden border-4 border-amber-300 shadow-2xl bg-gradient-to-b from-sky-400 via-sky-300 to-blue-500 flex flex-col p-2.5 sm:p-4" style={{ height: `${pondHeight}px` }}>
           {/* Vạch xuất phát & Vạch đích */}
-          <div className="flex justify-between items-center text-xs font-black text-white px-4 py-1.5 rounded-full bg-black/30 backdrop-blur-xs mb-2 z-10">
-            <span className="flex items-center gap-1.5">
+          <div className="flex justify-between items-center text-[10px] sm:text-xs font-black text-white px-3 sm:px-4 py-1.5 rounded-full bg-black/30 backdrop-blur-xs mb-2 z-10">
+            <span className="flex items-center gap-1.5 flex-shrink-0">
               <span>🚩</span> VẠCH XUẤT PHÁT
             </span>
-            <span className="text-amber-200">
+            <span className="hidden md:inline text-amber-200">
               {availableStudents.length > 0
                 ? `🎯 Có ${availableStudents.length} bạn đang tranh tài`
                 : '🎉 Toàn bộ học sinh đã trả bài! Hãy bấm Reset.'}
             </span>
-            <span className="flex items-center gap-1.5 text-amber-300">
-              <span>🏁</span> VẠCH ĐÍCH (VỀ NHẤT) 🏆
+            <span className="flex items-center gap-1.5 text-amber-300 flex-shrink-0">
+              <span>🏁</span> VẠCH ĐÍCH 🏆
             </span>
           </div>
 
@@ -668,7 +962,7 @@ export default function CalloutGamePage() {
             }}
           />
 
-          {/* Danh sách các làn đua */}
+          {/* Ao đua chung: tất cả tay đua bơi chung trong một mặt nước */}
           {availableStudents.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-white/40 backdrop-blur-md rounded-2xl my-4 z-10">
               <span className="text-6xl mb-3 animate-bounce">🏆</span>
@@ -681,67 +975,57 @@ export default function CalloutGamePage() {
               </Button>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col justify-around gap-2 my-2 relative z-10">
-              {(phase === 'idle'
-                ? availableStudents.map((s, idx) => ({
-                    student: s,
-                    avatar: RACER_AVATARS[idx % RACER_AVATARS.length],
-                    progress: 0,
-                    baseSpeed: 1,
-                    boostTimer: 0,
-                    boostMultiplier: 1,
-                    statusEffect: null,
-                    rank: idx + 1,
-                    lane: idx,
-                  }))
-                : racers
-              ).map((r, idx) => (
-                <div
-                  key={r.student.id}
-                  className="relative h-12 bg-white/40 backdrop-blur-xs rounded-2xl border border-white/60 flex items-center px-2 shadow-inner overflow-hidden"
-                >
-                  {/* Làn sóng nước nhấp nhô */}
-                  <div className="absolute inset-0 opacity-25 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-200 via-transparent to-transparent pointer-events-none" />
-
-                  {/* Khối Tay Đua: Chạm chính xác 100% vào vạch đích ca-rô */}
+            <div
+              className="relative z-10"
+              style={{ height: trackHeight }}
+              data-race-track
+            >
+              {displayRacers.map((r, idx) => {
+                const top = idx * rowH + (rowH - iconSize) / 2
+                return (
                   <div
-                    className="absolute transition-all duration-75 flex items-center z-10"
+                    key={r.student.id}
+                    data-racer-id={r.student.id}
+                    className="absolute left-0 flex items-center will-change-transform"
                     style={{
-                      left: `calc(125px + (${Math.min(100, r.progress)} / 100) * (100% - 185px))`,
+                      top,
+                      transform: 'translate3d(110px, 0, 0)',
                     }}
                   >
-                    {/* 1. Tên học sinh gắn bên trái Icon (đi theo sau lưng icon) */}
-                    <span className={`absolute right-full mr-2.5 px-2.5 py-0.5 rounded-full text-[11px] font-black shadow-sm whitespace-nowrap border transition-all ${
-                      r.statusEffect === 'fire'
-                        ? 'bg-amber-500 text-white border-amber-300 scale-105 animate-pulse'
-                        : r.statusEffect === 'lightning'
-                        ? 'bg-blue-600 text-white border-blue-300 scale-105 animate-pulse'
-                        : 'bg-white/95 text-slate-800 border-slate-200'
-                    }`}>
-                      {r.student.name}
+                    {/* 1. Tên học sinh gắn bên trái Icon (ngoài luồng, đi theo sau lưng icon) */}
+                    <span
+                      className={`absolute right-full mr-1.5 px-2 py-0.5 rounded-full font-black shadow-sm whitespace-nowrap border transition-all ${
+                        r.statusEffect === 'fire'
+                          ? 'bg-amber-500 text-white border-amber-300 scale-105 animate-pulse'
+                          : r.statusEffect === 'lightning'
+                          ? 'bg-blue-600 text-white border-blue-300 scale-105 animate-pulse'
+                          : 'bg-white/95 text-red-600 border-red-200'
+                      }`}
+                      style={{ fontSize: nameFontSize, lineHeight: 1.1 }}
+                    >
+                      {formatFullNameLine(r.student, { separator: ' · ' })}
                     </span>
 
-                    {/* 2. Icon Vịt / Thú cưng chạm trực tiếp vào dải cờ ca-rô đích */}
+                    {/* 2. Icon Vịt / Thú cưng */}
                     <div className="relative flex-shrink-0">
                       <div
-                        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center text-xl shadow-lg transform transition-transform ${
+                        className={`rounded-full border-2 flex items-center justify-center shadow-lg transform transition-transform ${
                           phase === 'racing' ? 'animate-bounce' : ''
                         } ${r.avatar.color}`}
+                        style={{ width: iconSize, height: iconSize, fontSize: iconFontSize }}
                       >
                         {r.avatar.icon}
                       </div>
 
-                      {/* Hiệu ứng Nitro / Tia sét */}
                       {r.statusEffect === 'fire' && (
-                        <span className="absolute -top-3 -right-2 text-base animate-ping">🔥</span>
+                        <span className="absolute -top-2 -right-1 text-[10px] animate-ping">🔥</span>
                       )}
                       {r.statusEffect === 'lightning' && (
-                        <span className="absolute -top-3 -right-2 text-base animate-bounce">⚡</span>
+                        <span className="absolute -top-2 -right-1 text-[10px] animate-bounce">⚡</span>
                       )}
 
-                      {/* Top 1, 2, 3 badge */}
                       {phase === 'racing' && r.rank && r.rank <= 3 && (
-                        <span className={`absolute -bottom-1.5 -right-1 text-[9px] font-black px-1.5 rounded-full text-white shadow-xs ${
+                        <span className={`absolute -bottom-1 -right-1 text-[8px] font-black px-1 rounded-full text-white shadow-xs ${
                           r.rank === 1 ? 'bg-amber-500' : r.rank === 2 ? 'bg-slate-500' : 'bg-amber-700'
                         }`}>
                           #{r.rank}
@@ -749,13 +1033,8 @@ export default function CalloutGamePage() {
                       )}
                     </div>
                   </div>
-
-                  {/* Số thứ tự làn */}
-                  <span className="text-[10px] font-bold text-white/80 select-none ml-1">
-                    #{idx + 1}
-                  </span>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
@@ -774,21 +1053,22 @@ export default function CalloutGamePage() {
             </div>
           )}
 
-          {/* Nút Khởi Động Đua ở dưới */}
+          {/* Nút Khởi Động Đua — nổi giữa khung hồ bơi */}
           {phase === 'idle' && availableStudents.length > 0 && (
-            <div className="flex justify-center pt-2 relative z-20">
+            <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-center z-20 pointer-events-none px-4">
               <Button
                 size="xl"
                 onClick={startDuckRace}
                 leftIcon={<Play size={22} className="fill-current" />}
-                className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black px-10 py-4 rounded-2xl shadow-2xl hover:scale-105 transition-all text-base border-2 border-amber-200"
+                className="pointer-events-auto bg-amber-400 hover:bg-amber-500 text-slate-950 font-black px-5 sm:px-10 py-3 sm:py-4 rounded-2xl shadow-2xl hover:scale-105 transition-all text-sm sm:text-base border-2 border-amber-200 ring-8 ring-white/20"
               >
                 Bắt đầu đua vịt gọi tên
               </Button>
             </div>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {/* ─── GIAO DIỆN TRÒ CHƠI 2: VÒNG QUAY MAY MẮN (LUCKY WHEEL) ─── */}
       {gameMode === 'lucky_wheel' && (
@@ -838,9 +1118,10 @@ export default function CalloutGamePage() {
         </div>
       )}
 
-      {/* ─── MODAL / BANNER VINH DANH BẠN CHIẾN THẮNG (DÙNG CHUNG) ─── */}
+      {/* ─── MODAL VINH DANH BẠN CHIẾN THẮNG — HIỆN GIỮA MÀN HÌNH (DÙNG CHUNG) ─── */}
       {phase === 'winner' && winner && (
-        <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 border-4 border-yellow-200 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-6 animate-in zoom-in-95 duration-300">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-3xl p-6 rounded-3xl bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-400 border-4 border-yellow-200 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-6 animate-in zoom-in-95 duration-300">
           <div className="flex items-center gap-5">
             <div className="relative">
               <div className="w-20 h-20 rounded-full bg-white border-4 border-amber-500 shadow-xl flex items-center justify-center text-4xl animate-bounce">
@@ -852,9 +1133,20 @@ export default function CalloutGamePage() {
               <span className="text-xs font-black uppercase tracking-wider bg-amber-900/10 text-amber-950 px-3 py-1 rounded-full inline-block mb-1">
                 ĐÃ TÌM THẤY BẠN LÊN BẢNG
               </span>
-              <h2 className="text-3xl font-black text-amber-950 leading-tight">
-                Xin mời bạn: <span className="underline decoration-wavy decoration-amber-600">{winner.student.name}</span>
+              <p className="text-xs font-bold text-amber-900 mt-1">
+                Xin mời bạn:
+              </p>
+              <h2
+                className="text-4xl font-black text-red-700 leading-tight"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                {toTitleCase(winner.student.name)}
               </h2>
+              {getEnglishName(winner.student) && (
+                <p className="text-base font-bold italic text-amber-800 mt-0.5">
+                  {getEnglishName(winner.student)}
+                </p>
+              )}
               <p className="text-xs font-bold text-amber-900 mt-0.5">
                 Mời em lên bảng trả bài hoặc trả lời câu hỏi của thầy/cô!
               </p>
@@ -872,6 +1164,20 @@ export default function CalloutGamePage() {
               {scoreAwarded ? 'Đã cộng 10 Sao' : '+10 Sao trả bài tốt'}
             </Button>
 
+            {racers.length > 1 && (
+              <Button
+                variant="secondary"
+                onClick={handleAwardParticipation}
+                disabled={participationAwarded}
+                leftIcon={<Sparkles size={16} />}
+                className="bg-white/80 text-amber-950 hover:bg-white border-2 border-amber-300 font-bold"
+              >
+                {participationAwarded
+                  ? `✓ Đã cộng điểm ${racers.length - 1} tay đua`
+                  : `+5 điểm cho ${racers.length - 1} tay đua còn lại`}
+              </Button>
+            )}
+
             <Button
               size="lg"
               onClick={handleNextTurn}
@@ -880,6 +1186,7 @@ export default function CalloutGamePage() {
             >
               Lượt Tiếp Theo ➡️
             </Button>
+          </div>
           </div>
         </div>
       )}
@@ -934,7 +1241,12 @@ export default function CalloutGamePage() {
                 >
                   <span className="text-xl">{RACER_AVATARS[idx % RACER_AVATARS.length].icon}</span>
                   <div className="truncate flex-1">
-                    <p className="font-bold text-xs text-[var(--color-text)] truncate">{s.name}</p>
+                    <p className="font-bold text-xs text-[var(--color-text)] truncate">
+                      {toTitleCase(s.name)}
+                      {getEnglishName(s) && (
+                        <span className="italic font-semibold text-[var(--color-primary)]"> · {getEnglishName(s)}</span>
+                      )}
+                    </p>
                     <p className="text-[10px] text-[var(--color-text-muted)]">
                       {s.seat_row != null ? `Bàn ${s.seat_row + 1}` : 'Chưa xếp ghế'}
                     </p>

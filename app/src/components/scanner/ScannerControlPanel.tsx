@@ -30,6 +30,7 @@ import {
   X,
 } from 'lucide-react'
 import type { RealtimeEvent, DuelPlayerState, TeamGroupState, BossFightState } from '@/services/sync'
+import { formatFullNameLine } from '@/utils/student-name'
 
 interface ScannerControlPanelProps {
   roomCode: string
@@ -65,6 +66,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [showWinnerModal, setShowWinnerModal] = useState(false)
   const [isScoreAwarded, setIsScoreAwarded] = useState(false)
+  const [awardError, setAwardError] = useState<string | null>(null)
   const [lastScanCounts, setLastScanCounts] = useState<{ red: number; green: number; yellow: number; blue: number }>({
     red: 0, green: 0, yellow: 0, blue: 0,
   })
@@ -133,13 +135,24 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           if (stRes.ok) {
             const stList = await stRes.json()
             setClassStudents(stList)
+            // Phòng cũ không có english_name trong template → tra bù từ danh sách lớp
+            const byId = new Map<string, any>((stList as any[]).map(s => [s.id, s]))
+            if (session.template?.duel_players) {
+              const { p1, p2 } = session.template.duel_players
+              if (p1?.id && !p1.english_name && byId.has(p1.id)) {
+                setP1State(prev => ({ ...prev, english_name: byId.get(p1.id).english_name ?? null }))
+              }
+              if (p2?.id && !p2.english_name && byId.has(p2.id)) {
+                setP2State(prev => ({ ...prev, english_name: byId.get(p2.id).english_name ?? null }))
+              }
+            }
           }
         }
 
         if (session.template?.duel_players) {
           const { p1, p2 } = session.template.duel_players
-          setP1State({ id: p1?.id || 'p1', name: p1?.name || 'Đấu thủ 1', hp: 100, choice: '' })
-          setP2State({ id: p2?.id || 'p2', name: p2?.name || 'Đấu thủ 2', hp: 100, choice: '' })
+          setP1State({ id: p1?.id || 'p1', name: p1?.name || 'Đấu thủ 1', english_name: p1?.english_name ?? null, hp: 100, choice: '' })
+          setP2State({ id: p2?.id || 'p2', name: p2?.name || 'Đấu thủ 2', english_name: p2?.english_name ?? null, hp: 100, choice: '' })
         }
 
         const rawQuestions = session?.template?.questions || []
@@ -189,6 +202,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
           setIsTimerRunning(false)
           setShowWinnerModal(false)
           setIsScoreAwarded(false)
+          setAwardError(null)
         }
       }
     } catch (err) {
@@ -218,6 +232,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         return {
           title: `🏆 CHIẾN THẮNG 1 VS 1!`,
           name: p1State.name,
+          enName: p1State.english_name || null,
           id: p1State.id,
           detail: `Chiến thắng với ${p1State.hp}% HP (đối thủ còn ${p2State.hp}% HP)`,
           icon: '🥇',
@@ -226,6 +241,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         return {
           title: `🏆 CHIẾN THẮNG 1 VS 1!`,
           name: p2State.name,
+          enName: p2State.english_name || null,
           id: p2State.id,
           detail: `Chiến thắng với ${p2State.hp}% HP (đối thủ còn ${p1State.hp}% HP)`,
           icon: '🥇',
@@ -233,7 +249,8 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
       } else {
         return {
           title: `🤝 KẾT QUẢ HÒA!`,
-          name: `${p1State.name} & ${p2State.name}`,
+          name: `${formatFullNameLine(p1State)} & ${formatFullNameLine(p2State)}`,
+          enName: null,
           id: p1State.id,
           detail: `Cả 2 bạn đều giữ được ${p1State.hp}% HP!`,
           icon: '🌟',
@@ -247,6 +264,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         return {
           title: `🎉 CẢ LỚP ĐÃ HẠ GỤC BOSS!`,
           name: `Toàn Thể Lớp Học`,
+          enName: null,
           id: 'all',
           detail: `Tỉ lệ trả lời đúng đạt ${bossState.overallAccuracy}%! Boss đã bị tiêu diệt!`,
           icon: '🐉💥',
@@ -255,6 +273,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
         return {
           title: `🐲 BOSS ĐÃ TẨU THOÁT!`,
           name: `Hãy Cố Gắng Lần Sau`,
+          enName: null,
           id: 'none',
           detail: `Tỉ lệ đúng đạt ${bossState.overallAccuracy}%. Cần đạt từ 80% để diệt Boss.`,
           icon: '⚡',
@@ -265,38 +284,66 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
     return {
       title: `🏆 VINH DANH TIẾT HỌC`,
       name: `Các Bạn Học Sinh Xuất Sắc`,
+      enName: null,
       id: 'top',
       detail: `Chúc mừng cả lớp đã hoàn thành bài học!`,
       icon: '🏆',
     }
   }, [gameType, p1State, p2State, bossState])
 
-  // Cộng điểm thưởng RPG
+  // Cộng điểm thưởng RPG: Winner +10, người tham gia +5 (1v1: đối thủ · Boss: cả lớp)
   const handleAwardScore = async () => {
     if (isScoreAwarded || !winnerInfo.id || winnerInfo.id === 'none') return
+    setAwardError(null)
     try {
-      if (winnerInfo.id !== 'all' && winnerInfo.id !== 'top') {
-        const critRes = await fetch(`/api/evaluations?type=criteria`)
-        const criteria = await critRes.json()
-        const critId = criteria?.[0]?.id
+      const classId: string | undefined = gameSession?.class_id
+      if (!classId) throw new Error('Không xác định được lớp của phòng chơi')
 
-        if (critId) {
-          await fetch('/api/evaluations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              student_id: winnerInfo.id,
-              criteria_id: critId,
-              score: 10,
-              note: `⭐ Chiến thắng trò chơi: ${winnerInfo.title}`,
-              session_type: 'game',
-            }),
-          })
+      const critRes = await fetch(`/api/evaluations?type=criteria&classId=${encodeURIComponent(classId)}`)
+      if (!critRes.ok) throw new Error('Không tải được tiêu chí đánh giá')
+      const criteria = await critRes.json()
+      const critId = criteria?.[0]?.id
+      if (!critId) throw new Error('Lớp chưa có tiêu chí đánh giá')
+
+      // Chỉ cộng điểm cho học sinh có thật trong lớp (chặn ID ảo p1/p2/all/top)
+      const validIds = new Set<string>((classStudents as any[]).map(s => s.id))
+      const awards: { student_id: string; criteria_id: string; score: number; note: string }[] = []
+
+      const VIRTUAL_IDS = ['all', 'top', 'none', 'p1', 'p2']
+      if (!VIRTUAL_IDS.includes(winnerInfo.id) && validIds.has(winnerInfo.id)) {
+        awards.push({
+          student_id: winnerInfo.id,
+          criteria_id: critId,
+          score: 10,
+          note: `🏆 Chiến thắng trò chơi (${gameType})`,
+        })
+      }
+
+      // Điểm công bằng cho người còn lại
+      if (gameType === 'arena') {
+        const loserId = p1State.hp >= p2State.hp ? p2State.id : p1State.id
+        if (!winnerInfo.id.startsWith('p') || validIds.has(loserId)) {
+          awards.push({ student_id: loserId, criteria_id: critId, score: 5, note: '🎖️ Tham gia đối kháng 1v1' })
         }
+      } else if (gameType === 'boss' && winnerInfo.id === 'all') {
+        for (const s of classStudents as any[]) {
+          awards.push({ student_id: s.id, criteria_id: critId, score: 5, note: '🐉 Cả lớp hạ gục Boss thành công' })
+        }
+      }
+
+      if (awards.length > 0) {
+        const res = await fetch('/api/evaluations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ awards, session_type: 'game' }),
+        })
+        if (!res.ok) throw new Error('Lưu điểm thất bại')
       }
       setIsScoreAwarded(true)
       await onBroadcast({ type: 'TRIGGER_CONFETTI' })
-    } catch {}
+    } catch (err) {
+      setAwardError(err instanceof Error ? err.message : 'Cộng điểm thất bại — thử lại!')
+    }
   }
 
   // 1. Đẩy câu hỏi lên TV
@@ -559,8 +606,13 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
               leftIcon={<Star size={15} className="text-amber-500 fill-amber-500" />}
               className="bg-white text-slate-950 font-black text-xs shadow-xs"
             >
-              {isScoreAwarded ? '✓ Đã cộng 10 Sao' : '+10 Điểm Thưởng'}
+              {isScoreAwarded ? '✓ Đã cộng điểm' : '+10 Điểm Thưởng'}
             </Button>
+            {awardError && (
+              <p className="col-span-2 text-[10px] font-bold text-center" style={{ color: 'var(--color-danger)' }}>
+                ⚠️ {awardError}
+              </p>
+            )}
 
             <Link href="/game" className="w-full">
               <Button
@@ -640,7 +692,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             {/* Đấu thủ 1 */}
             <div className="p-3 bg-white rounded-xl border border-red-200 flex flex-col gap-2 shadow-2xs">
               <div className="flex justify-between items-center">
-                <span className="font-black text-xs text-red-700 truncate">{p1State.name}</span>
+                <span className="font-black text-xs text-red-700 truncate">{formatFullNameLine(p1State)}</span>
                 <span className="text-xs font-black text-red-600">{p1State.hp}%</span>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-red-200">
@@ -669,7 +721,7 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
             {/* Đấu thủ 2 */}
             <div className="p-3 bg-white rounded-xl border border-blue-200 flex flex-col gap-2 shadow-2xs">
               <div className="flex justify-between items-center">
-                <span className="font-black text-xs text-blue-700 truncate">{p2State.name}</span>
+                <span className="font-black text-xs text-blue-700 truncate">{formatFullNameLine(p2State)}</span>
                 <span className="text-xs font-black text-blue-600">{p2State.hp}%</span>
               </div>
               <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-blue-200">
@@ -901,23 +953,33 @@ export function ScannerControlPanel({ roomCode, onBroadcast }: ScannerControlPan
               <h3 className="text-xl font-black text-slate-900">
                 {winnerInfo.name}
               </h3>
+              {winnerInfo.enName && (
+                <p className="text-sm font-bold italic text-amber-700 mt-0.5">{winnerInfo.enName}</p>
+              )}
               <p className="text-xs font-bold text-slate-500 mt-1">
                 {winnerInfo.detail}
               </p>
             </div>
 
-            <div className="w-full flex flex-col gap-2 pt-2 border-t border-slate-100">
-              {winnerInfo.id !== 'none' && (
-                <Button
-                  size="md"
-                  onClick={handleAwardScore}
-                  disabled={isScoreAwarded}
-                  leftIcon={<Star size={16} className="text-amber-500 fill-amber-500" />}
-                  className="w-full bg-amber-400 text-slate-950 font-black shadow-sm"
-                >
-                  {isScoreAwarded ? '✓ Đã cộng 10 Sao' : '+10 Điểm Thưởng Sổ Điểm'}
-                </Button>
-              )}
+              <div className="w-full flex flex-col gap-2 pt-2 border-t border-slate-100">
+                {winnerInfo.id !== 'none' && (
+                  <>
+                    <Button
+                      size="md"
+                      onClick={handleAwardScore}
+                      disabled={isScoreAwarded}
+                      leftIcon={<Star size={16} className="text-amber-500 fill-amber-500" />}
+                      className="w-full bg-amber-400 text-slate-950 font-black shadow-sm"
+                    >
+                      {isScoreAwarded ? '✓ Đã cộng điểm (thắng +10, tham gia +5)' : '+10 Điểm Thưởng Sổ Điểm'}
+                    </Button>
+                    {awardError && (
+                      <p className="text-xs font-bold text-center" style={{ color: 'var(--color-danger)' }}>
+                        ⚠️ {awardError}
+                      </p>
+                    )}
+                  </>
+                )}
 
               <div className="grid grid-cols-2 gap-2">
                 <Button

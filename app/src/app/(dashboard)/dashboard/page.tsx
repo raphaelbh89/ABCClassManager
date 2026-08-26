@@ -56,6 +56,9 @@ export default function DashboardPage() {
             style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-2xl)' }}
           >
             Chào buổi sáng! 👋
+            <span className="ml-2 font-semibold" style={{ fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.75)' }}>
+              (Good Morning!)
+            </span>
           </h1>
           <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 'var(--text-sm)' }}>
             Hôm nay: {new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })} • {currentClass ? `${currentClass.name} (Khối ${currentClass.grade_level})` : 'Chưa chọn lớp'}

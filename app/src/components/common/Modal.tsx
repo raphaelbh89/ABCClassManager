@@ -47,7 +47,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
     >
       <div
         className={cn(
-          'w-full relative',
+          'w-full relative max-h-[92dvh] overflow-y-auto',
           'bg-[var(--color-surface)] rounded-[var(--radius-xl)]',
           'shadow-[var(--shadow-lg)]',
           'animate-in fade-in slide-in-from-bottom-4 duration-200',

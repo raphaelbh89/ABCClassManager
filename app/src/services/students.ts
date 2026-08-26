@@ -25,6 +25,7 @@ export async function getStudentById(id: string): Promise<Student | null> {
 export async function createStudent(params: {
   class_id: string
   name: string
+  english_name?: string | null
   avatar_config?: AvatarConfig
   seat_row?: number
   seat_col?: number
@@ -38,9 +39,22 @@ export async function createStudent(params: {
   return await res.json()
 }
 
+export async function bulkImportStudents(
+  classId: string,
+  rows: { name: string; english_name?: string | null }[]
+): Promise<Student[]> {
+  const res = await fetch('/api/students', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ class_id: classId, students: rows }),
+  })
+  if (!res.ok) throw new Error('Không thể nhập danh sách học sinh')
+  return await res.json()
+}
+
 export async function updateStudent(
   id: string,
-  params: Partial<Pick<Student, 'name' | 'avatar_config' | 'seat_row' | 'seat_col' | 'is_active'>>
+  params: Partial<Pick<Student, 'name' | 'english_name' | 'avatar_config' | 'seat_row' | 'seat_col' | 'is_active'>>
 ): Promise<Student> {
   const res = await fetch('/api/students', {
     method: 'PUT',

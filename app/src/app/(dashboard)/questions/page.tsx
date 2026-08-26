@@ -313,6 +313,9 @@ export default function QuestionsPage() {
         <div>
           <h1 className="font-bold text-2xl" style={{ fontFamily: 'var(--font-heading)' }}>
             📚 Ngân hàng Câu hỏi Theo Chủ Đề
+            <span className="ml-2 font-semibold text-sm text-[var(--color-text-muted)]">
+              (Question Bank by Topic)
+            </span>
           </h1>
           <p className="text-xs text-[var(--color-text-muted)]">
             Quản lý câu hỏi Tiếng Anh, Toán & Khoa học bằng Tiếng Anh, phân loại theo từng chủ đề bài học

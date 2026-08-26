@@ -138,6 +138,9 @@ export default function ClassesPage() {
         <div>
           <h1 className="font-bold" style={{ fontFamily: 'var(--font-heading)', fontSize: 'var(--text-2xl)' }}>
             📚 Quản lý lớp học
+            <span className="ml-2 font-semibold" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+              (Class Management)
+            </span>
           </h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
             {classes.length} lớp · Năm học {SCHOOL_YEAR}
