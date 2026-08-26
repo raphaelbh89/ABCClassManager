@@ -60,6 +60,41 @@ export async function POST(req: Request) {
       return response
     }
 
+    // ─── Cập nhật hồ sơ giáo viên (đổi tên / trường) ───
+    if (action === 'update_profile') {
+      const cookieStore = await cookies()
+      const userId = cookieStore.get('user_id')?.value
+
+      let user: any
+      if (userId) {
+        user = db.prepare('SELECT * FROM teachers WHERE id = ?').get(userId)
+      }
+      if (!user) {
+        user = db.prepare('SELECT * FROM teachers LIMIT 1').get()
+      }
+
+      if (!user) {
+        return NextResponse.json({ error: 'Không tìm thấy tài khoản người dùng' }, { status: 404 })
+      }
+
+      const newName = String(body.new_name || '').trim()
+      if (!newName) {
+        return NextResponse.json({ error: 'Tên giáo viên không được để trống' }, { status: 400 })
+      }
+      if (newName.length > 80) {
+        return NextResponse.json({ error: 'Tên quá dài (tối đa 80 ký tự)' }, { status: 400 })
+      }
+      const newSchool = body.new_school !== undefined ? String(body.new_school).trim().slice(0, 120) : user.school
+
+      db.prepare('UPDATE teachers SET name = ?, school = ? WHERE id = ?').run(newName, newSchool, user.id)
+
+      return NextResponse.json({
+        success: true,
+        message: 'Đã cập nhật hồ sơ thành công!',
+        user: { id: user.id, name: newName, email: user.email, school: newSchool },
+      })
+    }
+
     // ─── Đổi mật khẩu tài khoản ───
     if (action === 'change_password') {
       const cookieStore = await cookies()

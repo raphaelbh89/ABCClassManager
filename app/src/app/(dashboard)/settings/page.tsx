@@ -204,8 +204,49 @@ export default function SettingsPage() {
   }
   void teachingSubject
 
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // ─── Đổi tên giáo viên (hồ sơ) ───
+  const [profileName, setProfileName] = useState('')
+  const [profileSchool, setProfileSchool] = useState('')
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileMsg, setProfileMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  useEffect(() => {
+    if (currentUser) {
+      setProfileName(currentUser.name || '')
+      setProfileSchool((currentUser as any).school || '')
+    }
+  }, [currentUser])
+
+  const handleSaveProfile = async () => {
+    if (!profileName.trim()) {
+      setProfileMsg({ text: 'Tên giáo viên không được để trống', ok: false })
+      return
+    }
+    setProfileLoading(true)
+    setProfileMsg(null)
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_profile',
+          new_name: profileName.trim(),
+          new_school: profileSchool.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Cập nhật thất bại')
+      setCurrentUser(data.user)
+      setProfileMsg({ text: data.message || 'Đã lưu tên mới', ok: true })
+    } catch (err) {
+      setProfileMsg({ text: err instanceof Error ? err.message : 'Cập nhật thất bại', ok: false })
+    } finally {
+      setProfileLoading(false)
+      setTimeout(() => setProfileMsg(null), 5000)
+    }
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {    e.preventDefault()
     setPwError(null)
     setPwSuccess(null)
 
@@ -447,6 +488,48 @@ export default function SettingsPage() {
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
             <UserCheck size={13} /> Đang hoạt động
           </span>
+        </div>
+
+        {/* ─── Đổi tên giáo viên ─── */}
+        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-2.5">
+          <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+            👤 Đổi tên giáo viên
+            <span className="font-normal text-slate-400">(tên hiển thị trong toàn ứng dụng)</span>
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              type="text"
+              value={profileName}
+              onChange={e => setProfileName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSaveProfile() } }}
+              placeholder="VD: Nguyễn Thị Lan"
+              maxLength={80}
+              className="px-3 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-semibold focus:outline-none focus:border-[var(--color-primary)]"
+            />
+            <input
+              type="text"
+              value={profileSchool}
+              onChange={e => setProfileSchool(e.target.value)}
+              placeholder="Trường làm việc (tùy chọn)"
+              maxLength={120}
+              className="px-3 py-2.5 rounded-lg border border-slate-300 bg-white text-sm focus:outline-none focus:border-[var(--color-primary)]"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[10px] text-slate-500">Email đăng nhập không thể thay đổi.</span>
+            <Button
+              size="sm"
+              onClick={handleSaveProfile}
+              disabled={profileLoading || !profileName.trim()}
+            >
+              Lưu hồ sơ
+            </Button>
+          </div>
+          {profileMsg && (
+            <p className={`text-xs font-bold ${profileMsg.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+              {profileMsg.ok ? '✓ ' : '⚠️ '}{profileMsg.text}
+            </p>
+          )}
         </div>
 
         {pwSuccess && (
